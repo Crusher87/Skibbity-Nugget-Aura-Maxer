@@ -266,11 +266,10 @@ const BURN_MODELS = {
   },
   // EFFECT_HANDLERS.SCREEN_GAG — pity payout at end of gag.
   SCREEN_GAG(card, p, G) { return { aura: computeBaseEAS(G) * (p.pityEAS || 30), kek: 0, note: `${p.gagDuration || 3}s gag` }; },
-  // spawnRhythmGame() — perfect run = rarity budget; score fraction ≈ h.
+  // spawnRhythmGame() — linear from 0: perfectEAS (else rarity budget) × score fraction; score fraction ≈ h.
   RHYTHM(card, p, G, h) {
-    const budget = card.rarity === 'rare' ? BAL.EAS_RARE : card.rarity === 'common' ? BAL.EAS_COMMON : BAL.EAS_UNCOMMON;
-    const max = p.maxMult || 5;
-    return { aura: computeBaseEAS(G) * budget * (1 + h * (max - 1)) / max, kek: 0, note: `0 hits still pays ${(budget / max).toFixed(0)} EAS` };
+    const perfect = p.perfectEAS ?? (card.rarity === 'rare' ? BAL.EAS_RARE : card.rarity === 'common' ? BAL.EAS_COMMON : BAL.EAS_UNCOMMON);
+    return { aura: computeBaseEAS(G) * perfect * h, kek: 0, note: `perfect ${perfect} EAS${p.perfectEAS ? '' : ' (rarity default)'}, 0 hits pays 0` };
   },
   // EFFECT_HANDLERS.KEK_SPAWN — 3D coins via spawnKekCoin() (must be clicked).
   KEK_SPAWN(card, p) { return { aura: 0, kek: p.kekCoins || 2, note: 'coins must be clicked' }; },

@@ -161,22 +161,22 @@ const CARD_LIBRARY = [
   { id: 'bu_c17', name: 'Ermahgerd', emoji: '📚', type: 'Burn', rarity: 'common', desc: 'MASH to power it up! Starts at 15s of Aura. Every click anywhere within 3s adds +3s more, up to 60s max!', flavor: 'ERMAHGERD! BERKS!', archetype: 'INSTANT_BURST', params: { baseApsSeconds: 15, mashWindow: 3, mashBonusSeconds: 3, capApsSeconds: 60 } },
   { id: 'bu_c18', name: 'All Your Base', emoji: '👾', type: 'Burn', rarity: 'common', desc: 'Rewards how much you clicked in the last 30s: every 4 clicks = 1 second of Aura. At least 30s, max 60s!', flavor: 'All your Aura are belong to us.', archetype: 'INSTANT_BURST', params: { recentClicksAPC: true, clicksPerSecond: 4, floorApsSeconds: 30, capApsSeconds: 60, retroOverlay: 5 } },
   // Uncommon (×13) — base budget 120 EAS
-  { id: 'bu_u1', name: 'MLG Airhorn', emoji: '📯', type: 'Burn', rarity: 'uncommon', desc: '360 NO-SCOPE! BOOM! The screen shakes and you get 120 seconds of Aura all at once!', flavor: 'GET REKT SON', archetype: 'INSTANT_BURST', params: { apsSeconds: 120, shake: true } },
+  { id: 'bu_u1', name: 'MLG Airhorn', emoji: '📯', type: 'Burn', rarity: 'uncommon', desc: '360 NO-SCOPE! BOOM! The screen shakes and you get 160 seconds of Aura all at once!', flavor: 'GET REKT SON', archetype: 'INSTANT_BURST', params: { apsSeconds: 160, shake: true } },
   { id: 'bu_u2', name: 'Arthur Fist', emoji: '👊', type: 'Burn', rarity: 'uncommon', desc: 'SLAM! Get 120 seconds of Aura right now, your very next click counts double, PLUS the fist pounds out 2 Kek Koins every time!', flavor: 'When you\'re mad but stay calm. For now.', archetype: 'INSTANT_BURST', params: { apsSeconds: 120, doubleNext: true, kekBonus: 2 } },
   { id: 'bu_u3', name: 'Ugandan Knuckles', emoji: '🔴', type: 'Burn', rarity: 'uncommon', desc: 'Do you know de wey? Click all 8 Knuckles swarming the screen within 10s — 180 seconds of Aura total!', flavor: 'Do you know de wey to da Aura?', archetype: 'TARGET_CHASE', params: { targets: 8, timeout: 10, rewardEAS: 180, swarm: true } },
-  { id: 'bu_u4', name: 'Woman Yelling at Cat', emoji: '😾', type: 'Burn', rarity: 'uncommon', desc: 'An arrow points left or right — click that side of the screen! Hit it correctly 4 times in 10s for up to 6× Aura!', flavor: 'The cat is NOT sorry.', archetype: 'RHYTHM', params: { spatial: true, sides: 4, maxMult: 6, duration: 10 } },
-  { id: 'bu_u5', name: 'Leave Britney Alone', emoji: '😭', type: 'Burn', rarity: 'uncommon', desc: 'LEAVE HER ALONE! She wanders around the screen with 8 HP. Hit her 8 times in 6s for 180 Aura — but she keeps moving!', flavor: 'She has been through ENOUGH.', archetype: 'TARGET_CHASE', params: { targets: 1, hp: 8, timeout: 6, rewardEAS: 180, moving: true } },
-  { id: 'bu_u6', name: 'Surgery on a Grape', emoji: '🍇', type: 'Burn', rarity: 'uncommon', desc: 'The nugget shrinks super tiny! Click it precisely for 10s to earn up to 5× Aura. Steady hands!', flavor: 'Extremely delicate. Do not sneeze.', archetype: 'PRECISION', params: { duration: 10, mult: 5, smallNugget: true } },
-  { id: 'bu_u7', name: 'Chocolate Rain', emoji: '🍫', type: 'Burn', rarity: 'uncommon', desc: 'It\'s raining chocolate! 20 drops fall for 8s — every 4th is a golden Kek Koin. The rest give Aura. Click fast, you want both!', flavor: 'Some stay dry and others feel the pain.', archetype: 'COIN_RAIN', params: { coins: 20, valueEASEach: 9, duration: 8, motion: 'fall', kekEveryNth: 4 } },
+  { id: 'bu_u4', name: 'Woman Yelling at Cat', emoji: '😾', type: 'Burn', rarity: 'uncommon', desc: 'An arrow points left or right — click that side of the screen! 4 arrows in 10s, each correct side is worth 37.5 seconds of Aura (150 total).', flavor: 'The cat is NOT sorry.', archetype: 'RHYTHM', params: { spatial: true, sides: 4, duration: 10, perfectEAS: 150 } },
+  { id: 'bu_u5', name: 'Leave Britney Alone', emoji: '😭', type: 'Burn', rarity: 'uncommon', desc: 'LEAVE HER ALONE! She runs around the screen with 8 HP. Hit her 8 times in 6s for 240 seconds of Aura!', flavor: 'She has been through ENOUGH.', archetype: 'TARGET_CHASE', params: { targets: 1, hp: 8, timeout: 6, rewardEAS: 240, moving: true } },
+  { id: 'bu_u6', name: 'Surgery on a Grape', emoji: '🍇', type: 'Burn', rarity: 'uncommon', desc: 'The nugget shrinks super tiny! For 10s every click that lands gets 5× Aura AND banks 2.5 seconds of Aura (max 150s). Steady hands!', flavor: 'Extremely delicate. Do not sneeze.', archetype: 'PRECISION', params: { duration: 10, mult: 5, smallNugget: true, easPerClick: 2.5, capEAS: 150 } },
+  { id: 'bu_u7', name: 'Chocolate Rain', emoji: '🍫', type: 'Burn', rarity: 'uncommon', desc: 'It\'s raining chocolate! 20 drops fall for 8s — every 4th is a golden Kek Koin, the rest give 6 seconds of Aura each. Click fast, you want both!', flavor: 'Some stay dry and others feel the pain.', archetype: 'COIN_RAIN', params: { coins: 20, valueEASEach: 6, duration: 8, motion: 'fall', kekEveryNth: 4 } },
   { id: 'bu_u8', name: 'Zombie Kid Turtle', emoji: '🐢', type: 'Burn', rarity: 'uncommon', desc: 'I like turtles! Click this turtle 5 times within 5s to earn 8 Kek Koins. But if you pause 1.5s, it regains 1 HP — don\'t let it regen!', flavor: 'I like turtles. — Jonathon, age 7', archetype: 'TARGET_CHASE', params: { targets: 1, hp: 5, timeout: 5, kekReward: 8, regenDelay: 1.5, regenHp: 1 } },
-  { id: 'bu_u9', name: 'Keyboard Cat', emoji: '🎹', type: 'Burn', rarity: 'uncommon', desc: 'Play it off! Click 5 zones on screen — each one must be higher up than the last. Hit all 5 in 8s for up to 6× Aura!', flavor: 'Play him off, keyboard cat.', archetype: 'RHYTHM', params: { ascending: true, zones: 5, maxMult: 6, duration: 8 } },
-  { id: 'bu_u10', name: 'Numa Numa Dance', emoji: '💃', type: 'Burn', rarity: 'uncommon', desc: 'MA-IA-HI! A beat pulses on screen — click it in time with the rhythm 6 times in 10s for up to 5× Aura!', flavor: 'MA-IA-HI, MA-IA-HU, MA-IA-HO!', archetype: 'RHYTHM', params: { bpm: true, beats: 6, maxMult: 5, duration: 10, hitWindow: 0.6, randomPos: true } },
+  { id: 'bu_u9', name: 'Keyboard Cat', emoji: '🎹', type: 'Burn', rarity: 'uncommon', desc: 'Play it off! Click 5 zones on the right, each one higher than the last, within 8s — 24 seconds of Aura per zone (120 total).', flavor: 'Play him off, keyboard cat.', archetype: 'RHYTHM', params: { ascending: true, zones: 5, duration: 8 } },
+  { id: 'bu_u10', name: 'Numa Numa Dance', emoji: '💃', type: 'Burn', rarity: 'uncommon', desc: 'MA-IA-HI! A beat pops up somewhere on screen 6 times in 10s — click each one before it vanishes (0.6s) for 28 seconds of Aura (170 total)!', flavor: 'MA-IA-HI, MA-IA-HU, MA-IA-HO!', archetype: 'RHYTHM', params: { bpm: true, beats: 6, duration: 10, hitWindow: 0.6, randomPos: true, perfectEAS: 170 } },
   { id: 'bu_u11', name: 'Shooting Stars', emoji: '🌠', type: 'Burn', rarity: 'uncommon', desc: 'Woah — 15 neon stars shoot across the screen from left to right! Click them fast in 8s for 12 seconds of Aura each!', flavor: '♪ And in the night you hear me scream ♪', archetype: 'COIN_RAIN', params: { coins: 15, valueEASEach: 12, duration: 8, neon: true, motion: 'streak' } },
   { id: 'bu_u12', name: 'Rickroll', emoji: '🕺', type: 'Burn', rarity: 'uncommon', desc: 'We\'re no strangers to Aura! You\'ve been rickrolled — but in a good way! Get 3× Aura per second for 60s! (It pretends to crash first.)', flavor: 'You know the rules. And so do I.', archetype: 'TEMP_APS_MULT', params: { mult: 3, duration: 60, fakeCrash: true } },
   { id: 'bu_u13', name: 'Gabe the Dog', emoji: '🐕', type: 'Burn', rarity: 'uncommon', desc: 'Bork bork! 25 bones fly across the screen — every bone you catch is worth 0.4 Kek Koins (10 for all 25). Use up to 3 copies at once to multiply every bone!', flavor: 'bork bork bork bork bork', archetype: 'COIN_RAIN', params: { coins: 25, duration: 10, motion: 'bones', kekPerBone: 0.4, multiKekBonus: true } },
   // Rare (×7) — base budget 600 EAS
   { id: 'bu_r1', name: 'John Cena', emoji: '💪', type: 'Burn', rarity: 'rare', desc: 'AND HIS NAME IS... THE NUGGET IS INVISIBLE! Click where you think it is for 15s — hit it for 7× Aura. Can you see him?', flavor: 'AND HIS NAME IS...', archetype: 'PRECISION', params: { duration: 15, mult: 7, invisibleNugget: true } },
-  { id: 'bu_r2', name: 'Just Do It (Shia)', emoji: '🎯', type: 'Burn', rarity: 'rare', desc: 'JUST DO IT! A beat starts slow then speeds up — hit all 8 beats perfectly as it gets faster in 12s for up to 10× Aura!', flavor: 'Yesterday you said tomorrow!', archetype: 'RHYTHM', params: { accelerating: true, beats: 8, maxMult: 10, duration: 12 } },
+  { id: 'bu_r2', name: 'Just Do It (Shia)', emoji: '🎯', type: 'Burn', rarity: 'rare', desc: 'JUST DO IT! A beat starts slow then speeds up — hit all 8 beats as it gets faster in 12s — 75 seconds of Aura per beat (600 for all 8)!', flavor: 'Yesterday you said tomorrow!', archetype: 'RHYTHM', params: { accelerating: true, beats: 8, duration: 12 } },
   { id: 'bu_r3', name: 'Leroy Jenkins', emoji: '🛡️', type: 'Burn', rarity: 'rare', desc: 'LEEEEEROYYY JENKINSSSS! He pops up for just 3s — click him to grab 900 seconds of Aura! He just ran in!', flavor: '...at least he has chicken.', archetype: 'TARGET_CHASE', params: { targets: 1, timeout: 3, rewardEAS: 900 } },
   { id: 'bu_r4', name: 'El Risitas', emoji: '😂', type: 'Burn', rarity: 'rare', desc: 'JA JA JA! Normally banks 600 seconds of income — but hold 2 copies and burn both at once for 1800s, or 3 copies for 4200s. The laughs scale up! (max 3 copies)', flavor: 'jajajajajajajajaja', archetype: 'INSTANT_BURST', params: { apsSeconds: 600, shake: 'violent', multiKekBonus: true } },
   { id: 'bu_r5', name: 'End of Ze World', emoji: '☄️', type: 'Burn', rarity: 'rare', desc: 'AMERICA!! Click 25 missiles one after another in 15s — each is worth 36 seconds of Aura (900 total). Get EVERY SINGLE ONE for a 10 Kek Koin bonus!', flavor: 'WHAT DOES THAT MEAN?!', archetype: 'TARGET_CHASE', params: { targets: 25, timeout: 15, rewardEAS: 900, kekBonus: 10, payPerTarget: true } },
@@ -595,7 +595,7 @@ function cardEffectLabel(card) {
     case 'AUTO_COLLECT': return `Auto-click ×${p.mult} · ${p.duration}s`;
     case 'PRECISION': return `${p.mult}× precise · ${p.duration}s`;
     case 'SCREEN_GAG': return `Pity ${fmt(p.pityEAS)} EAS`;
-    case 'RHYTHM': return `Rhythm × up to ${p.maxMult}`;
+    case 'RHYTHM': return `Rhythm · perfect ${fmt(rhythmPerfectEAS(card))}s`;
     default: return card.archetype;
   }
 }
@@ -2218,7 +2218,7 @@ const EFFECT_HANDLERS = {
         if (isKek) {
           spawnBurnKekCoin();
         } else {
-          spawnBurnCoin(p.valueEASEach || 9, card.emoji);
+          spawnBurnCoin(p.valueEASEach || 6, card.emoji);
         }
       }, i * ival);
     }
@@ -2903,16 +2903,20 @@ function spawnBurnTarget(card, p) {
   }, timeoutMs);
 }
 
+// EAS a perfect RHYTHM run pays: the card's perfectEAS, else its rarity budget
+function rhythmPerfectEAS(card) {
+  const p = card.params || {};
+  return p.perfectEAS || (card.rarity === 'rare' ? BAL.EAS_RARE : card.rarity === 'common' ? BAL.EAS_COMMON : BAL.EAS_UNCOMMON);
+}
+
 function spawnRhythmGame(card, p) {
-  const maxMult = p.maxMult || 5;
   const dur = (p.duration || 10) * 1000;
   const baseEAS = computeBaseEAS();
 
-  // A perfect run pays the card's rarity budget; partial runs scale down from there
-  const budget = card.rarity === 'rare' ? BAL.EAS_RARE : card.rarity === 'common' ? BAL.EAS_COMMON : BAL.EAS_UNCOMMON;
+  // Linear from 0: each hit pays its share of perfectEAS, so a 0-hit run pays nothing
+  const perfect = rhythmPerfectEAS(card);
   const payout = (score, total) => {
-    const mult = 1 + (score / total) * (maxMult - 1);
-    const amt = baseEAS * budget * mult / maxMult;
+    const amt = baseEAS * perfect * score / total;
     G.aura += amt;
     showBurnToast((score === total ? 'PERFECT! ' : `${score}/${total} `) + '+' + fmt(amt));
   };
@@ -3020,7 +3024,7 @@ function spawnRhythmGame(card, p) {
     return;
   }
 
-  // Just Do It (Shia) — accelerating BPM, 8 beats, up to 10×
+  // Just Do It (Shia) — accelerating BPM, 8 beats, each hit pays its share
   if (p.accelerating) {
     const total = p.beats || 8;
     let score = 0, fired = 0;

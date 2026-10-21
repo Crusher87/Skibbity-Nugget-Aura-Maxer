@@ -129,6 +129,35 @@ async function midState(page) {
   });
 }
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+// No passive income while measuring a payout (gameLoop reads apsBuffMult), no frenzy from synthetic clicks.
+async function noPassive(page) {
+  await page.evaluate(() => {
+    window._realApsBuffMult = window._realApsBuffMult || apsBuffMult; apsBuffMult = () => 0; G.frenzyCooldown = 1e9;
+    window._cv = () => { const bs = getBinderStats(); return (G.auraPerClick + bs.addApc) * (G.allAuraMult + bs.addMult + getFieldMult()); };
+  });
+}
+// Activates a burn and plays it with a MutationObserver: 'hit' answers every prompt / clicks every
+// coin, target and pulse; 'miss' answers every arrow wrong and ignores the rest. Returns EAS + Kek gained.
+async function playBurn(page, id, mode, ms) {
+  await page.evaluate(([id, mode]) => {
+    window._a0 = G.aura; window._k0 = G.kekCoins;
+    window._obs = new MutationObserver(ms => ms.forEach(m => m.addedNodes.forEach(n => {
+      if (!(n instanceof HTMLElement)) return;
+      const t = n.textContent;
+      if (n.style.zIndex === '600' && (t === '⬅️' || t === '➡️')) {
+        const left = (t === '⬅️') === (mode === 'hit');
+        setTimeout(() => document.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: left ? 100 : window.innerWidth - 100 })), 40);
+      } else if (mode === 'hit' && (n.classList.contains('rhythm-zone') || n.classList.contains('burn-coin') || n.classList.contains('burn-target') || (n.style.zIndex === '600' && (t === '🎵' || t === '💥')))) {
+        // targets: hit until dead (a removed node can't be clicked in the real UI)
+        setTimeout(() => { for (let i = 0; i < 20; i++) { n.click(); if (!n.isConnected || !n.classList.contains('burn-target')) break; } }, 40);
+      }
+    })));
+    window._obs.observe(document.body, { childList: true, subtree: true });
+    devGiveCard(id); G.burnCooldownUntil = 0; activateBurn(id);
+  }, [id, mode]);
+  await sleep(ms);
+  return page.evaluate(() => { window._obs.disconnect(); return { eas: +((G.aura - window._a0) / computeBaseEAS()).toFixed(2), kek: G.kekCoins - window._k0 }; });
+}
 const nuggetCentre = (page) => page.evaluate(() => { const r = $nuggetContainer.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2, w: r.width }; });
 
 // Bot: clicks every burn coin / target / rhythm prompt and the nugget, for ms.
@@ -297,6 +326,7 @@ const BATCH_TESTS = {
     // OAG then Surgery: OAG's window survives, centre Kek every 5th, capped at 15, D6 capped at 90
     r = await page.evaluate(([x, y, w]) => {
       for (const id of ['bu_r6', 'bu_u6']) { devGiveCard(id); G.burnCooldownUntil = 0; activateBurn(id); }
+      G.clickBuffs.find(b => b.src === 'bu_u6').easPerClick = 0;   // multiplier check only (Surgery's D6 is checked in B5)
       const k0 = G.kekCoins;
       const bs = getBinderStats();
       const base = (G.auraPerClick + bs.addApc) * (G.allAuraMult + bs.addMult + getFieldMult());
@@ -668,11 +698,7 @@ const BATCH_TESTS = {
     await midState(page);
     const c = await nuggetCentre(page);
     const near = (a, b, tol = 0.02) => Math.abs(a - b) <= tol * Math.max(1, Math.abs(b));
-    // No passive income while measuring (gameLoop reads apsBuffMult), no frenzy from synthetic clicks
-    await page.evaluate(() => {
-      window._realApsBuffMult = apsBuffMult; apsBuffMult = () => 0; G.frenzyCooldown = 1e9;
-      window._cv = () => { const bs = getBinderStats(); return (G.auraPerClick + bs.addApc) * (G.allAuraMult + bs.addMult + getFieldMult()); };
-    });
+    await noPassive(page);
     // Auto-click cards: D6 cap + clicks × mult × click value, in EAS
     for (const id of ['bu_c3', 'bu_c15', 'bu_c12']) {
       const w = await page.evaluate((id) => { window._a0 = G.aura; devGiveCard(id); G.burnCooldownUntil = 0; activateBurn(id); return CARD_BY_ID.get(id).params.duration; }, id);
@@ -730,6 +756,43 @@ const BATCH_TESTS = {
     check('B4 Vitas: 20 piercing hits win the boss within ~3 s', r.won && r.s < 3.6, JSON.stringify(r));
     await sleep(500);
     check('B4: no page/console errors', errs.length === 0, errs.slice(0, 8).join(' | '));
+    await ctx.close();
+  },
+
+  async B5(browser) {
+    const { ctx, page, errs } = await openPage(browser);
+    await midState(page);
+    const c = await nuggetCentre(page);
+    const near = (a, b, tol = 0.02) => Math.abs(a - b) <= tol * Math.max(1, Math.abs(b));
+    await noPassive(page);
+    let r;
+    // Instant: MLG 160
+    r = await page.evaluate(() => { const a0 = G.aura; devGiveCard('bu_u1'); G.burnCooldownUntil = 0; activateBurn('bu_u1'); return (G.aura - a0) / computeBaseEAS(); });
+    check('B5 MLG Airhorn: 160 EAS', near(r, 160), r.toFixed(2));
+    // Rhythm cards, perfect and 0-hit runs (linear from 0)
+    for (const [id, want, ms] of [['bu_u4', 150, 11500], ['bu_u9', 120, 1500], ['bu_u10', 170, 11000]]) {
+      for (const mode of ['hit', 'miss']) {
+        r = await playBurn(page, id, mode, ms);
+        check(`B5 ${id} ${mode === 'hit' ? 'perfect run' : '0 hits'}: ${mode === 'hit' ? want : 0} EAS`, near(r.eas, mode === 'hit' ? want : 0), JSON.stringify(r));
+      }
+    }
+    // Britney: 8 hits → 240
+    r = await playBurn(page, 'bu_u5', 'hit', 1500);
+    check('B5 Leave Britney Alone: 8 hits → 240 EAS', near(r.eas, 240), JSON.stringify(r));
+    // Surgery: every landed click banks 2.5 EAS up to 150 (on top of 5× clicks)
+    r = await page.evaluate(([x, y]) => {
+      G.clickBuffs = []; devGiveCard('bu_u6'); G.burnCooldownUntil = 0; activateBurn('bu_u6');
+      const base = computeBaseEAS(), cv = window._cv(), out = [];
+      for (const n of [40, 20, 20]) { const a0 = G.aura; for (let i = 0; i < n; i++) doClick(x, y); out.push(+((G.aura - a0 - n * 5 * cv) / base).toFixed(2)); }
+      G.clickBuffs = [];
+      return out;
+    }, [c.x, c.y]);
+    check('B5 Surgery: 40 / 20 / 20 clicks bank 100 / 50 / 0 EAS (cap 150)', near(r[0], 100) && near(r[1], 50) && near(r[2], 0), r.join(' / '));
+    // Chocolate Rain: 15 drops × 6 + 5 Kek
+    r = await playBurn(page, 'bu_u7', 'hit', 9500);
+    check('B5 Chocolate Rain: 15 × 6 = 90 EAS + 5 Kek', near(r.eas, 90) && r.kek === 5, JSON.stringify(r));
+    await sleep(500);
+    check('B5: no page/console errors', errs.length === 0, errs.slice(0, 8).join(' | '));
     await ctx.close();
   },
 };
