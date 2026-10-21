@@ -12,7 +12,7 @@ It builds on [BALANCE_PLAN.md](../BALANCE_PLAN.md). Phases 0–4 there were desi
 
 A first pass over `game.js` (commit `5b3e14b`) already turned these up. Reviewers confirm each one and add detail; they don't need to rediscover them.
 
-> **Overlap with the cleanup PR (branch `cleanup-and-fixes`).** That PR is expected to: wire up `pauseBoss`, `deadCenterOnly`, `doubleNext`, `gagDuration`, `fluctuate`, `echoOffset`; make Success Kid's `rareBonus`/`mythicBonus` apply in `pullCard()`; remove Chuck Norris's double-counted crit EV from `getBinderStats()`; pay RHYTHM cards by their own rarity budget (Shia was paid as Uncommon); stop a weaker click buff from lowering a stronger one; and make Gabe's multi-copy use 2^N − 1. Run the review **after** it merges, and for items it covers, verify the new behaviour instead of re-reporting the old bug. Note that Gabe going exponential makes the multi-copy exploit in 0.2 bigger, not smaller.
+> **Overlap with the cleanup PR (branch `cleanup-and-fixes`).** That PR is expected to: wire up `pauseBoss`, `deadCenterOnly`, `doubleNext`, `gagDuration`, `fluctuate`, `echoOffset`; make Success Kid's `rareBonus`/`mythicBonus` apply in `pullCard()`; remove Chuck Norris's double-counted crit EV from `getBinderStats()`; pay RHYTHM cards by their own rarity budget (Shia was paid as Uncommon); stop a weaker click buff from lowering a stronger one; Gabe's multi-copy stays linear. Run the review **after** it merges, and for items it covers, verify the new behaviour instead of re-reporting the old bug.
 
 ### 0.0 Cards Curtis already reworked by hand
 Curtis remembers doing **Nyan Cat** and "one or two at the beginning of the binder". The code agrees: Nyan Cat (f3), Shrek (bi_c1, added drain reduction), Harambe (bi_c2, faster Kek drops + flat APC) and Philosoraptor (bi_c4, now pays Kek) all differ from the BALANCE_PLAN audit and look hand-tuned. Moth and Lamp and This is Fine were also reworked at some point (their `cards.csv` text is older than the code). For these, keep Curtis's design intent: check that the numbers and text hold up, and don't propose a redesign unless something is broken.
@@ -37,7 +37,7 @@ These params are defined in `CARD_LIBRARY` but no code reads them:
 
 ### 0.2 Exploits and runaway scaling
 - **Multi-copy "Use All" is 2^N − 1.** Copies are uncapped (`BURN_INVENTORY_CAP` limits distinct card types shown, not copies). 10 El Risitas = 1023 × 600s of income; 10 Bad Luck Brian = 2,046 Kek Koins. Hoarding always beats using.
-- **Gabe the Dog "Use All"** grants Kek **without playing the minigame** (linear today; 2^N − 1 after the cleanup PR, which makes 10 copies = 10,230 Kek).
+- **Gabe the Dog "Use All"** grants Kek **without playing the minigame** (linear, `kekReward × N`, though the text says exponential).
 - **Expanding Brain** is uncapped and its start time is saved, so it keeps growing while the game is closed (+1% click Aura per real-world minute: +1,440% after a day).
 - **Overly Attached GF** pays 1 Kek per click with no center check (see 0.1). At 8–10 clicks/sec that is 120–150 Kek from one card. Also check if another click buff (Star Wars Kid, Dramatic Chipmunk) overwrites `clickMultTimer` and ends or extends the Kek window.
 - **Evil Kermit** EV = 900s of income vs El Risitas 600s guaranteed. Card text says "1800 Aura", but it is really 1800 *seconds of income*.

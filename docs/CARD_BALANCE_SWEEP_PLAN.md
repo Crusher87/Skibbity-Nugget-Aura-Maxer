@@ -112,7 +112,7 @@ Changing numbers is serial by nature, because every card lives in one `CARD_LIBR
 
 Why not let several agents edit game.js at once: B1–B3 change shared functions (`activateBurnMulti`, `pullCard`, click handler, `tickBoss`), and the cleanup thread is also reformatting game.js. Parallel edits there would conflict constantly. Pure param changes (B4–B8, one card per line) *could* be parallel in separate worktrees, but they're small enough that serial is faster than resolving conflicts.
 
-**Coordination with the "Codebase review and cleanup" thread:** its PR (branch `cleanup-and-fixes`) wires up most NOOP params, fixes Chuck Norris double-counting, applies Success Kid luck, pays RHYTHM by rarity, and makes Gabe multi-copy 2^N − 1. Branch balance work from `main` **after** that PR merges, and take sim baselines from the merged code. If it hasn't merged when B0 starts, B0 (new files under `tools/` only) can go ahead; B1 waits.
+**Coordination with the "Codebase review and cleanup" thread:** its PR (branch `cleanup-and-fixes`) wires up most NOOP params, fixes Chuck Norris double-counting, applies Success Kid luck, and pays RHYTHM by rarity (PR #2). Gabe multi-copy stays linear for this sweep to handle under D1. Branch balance work from `main` **after** that PR merges, and take sim baselines from the merged code. If it hasn't merged when B0 starts, B0 (new files under `tools/` only) can go ahead; B1 waits.
 
 ---
 
