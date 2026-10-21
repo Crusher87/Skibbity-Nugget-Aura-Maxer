@@ -328,6 +328,7 @@ const BATCH_TESTS = {
     await page.evaluate(() => {
       window._bones = 0;
       new MutationObserver(ms => ms.forEach(m => m.addedNodes.forEach(n => { if (n.classList && n.classList.contains('motion-bones')) { window._bones++; setTimeout(() => n.click(), 50); } }))).observe($burnFx, { childList: true });
+      activeKekCoins.forEach(c => { c.collected = true; });   // Brian's coins would auto-collect (B3) mid-test
       G.collection.bu_u13 = 3; G.burnCooldownUntil = 0; window._k0 = G.kekCoins; activateBurnMulti('bu_u13');
     });
     await page.waitForFunction(() => /Gabe: \d+\/25/.test(document.getElementById('log-content').textContent), null, { timeout: 60000 }).catch(() => { });
@@ -509,6 +510,153 @@ const BATCH_TESTS = {
 
     await sleep(300);
     check('B2: no page/console errors', errs.length === 0, errs.slice(0, 8).join(' | '));
+    await ctx.close();
+  },
+
+  async B3(browser) {
+    const { ctx, page, errs } = await openPage(browser);
+    await midState(page);
+    const use = (ids) => page.evaluate((ids) => { for (const id of ids) { devGiveCard(id); G.burnCooldownUntil = 0; activateBurn(id); } }, ids);
+    let r;
+
+    // Rickroll fake crash overlay, gone after 1.5 s; buff already running
+    await use(['bu_u12']);
+    r = await page.evaluate(() => ({ crash: !!document.querySelector('.fake-crash'), pe: document.querySelector('.fake-crash')?.style.pointerEvents, aps: apsBuffMult() }));
+    await sleep(1900);
+    const gone = await page.evaluate(() => !document.querySelector('.fake-crash'));
+    check('B3 Rickroll: fake crash shown (click-through), gone after 1.5 s, buff live', r.crash && r.pe === 'none' && r.aps === 3 && gone, JSON.stringify({ ...r, gone }));
+    await page.evaluate(() => { G.apsBuffs = []; });
+
+    // Kek coin auto-collects after 20 s idle, but not under Sigma Slam
+    const idleCoin = (sigma) => page.evaluate(async (sigma) => {
+      _binderSelectedSlot = 'field';
+      if (sigma) { devGiveCard('f2'); equipCard('f2'); } else unequipFieldSlot();
+      activeKekCoins.forEach(c => { c.collected = true; });
+      await new Promise(res => setTimeout(res, 100));
+      const k0 = G.kekCoins;
+      spawnKekCoin();
+      const coin = activeKekCoins[activeKekCoins.length - 1];
+      while (coin.phase !== 'idle') await new Promise(res => setTimeout(res, 50));
+      coin.idleAge = KEK_IDLE_TIMEOUT_S - 0.3;   // skip most of the 20 s wait
+      await new Promise(res => setTimeout(res, 800));
+      const out = { collected: coin.collected, kek: G.kekCoins - k0 };
+      if (sigma) unequipFieldSlot();
+      return out;
+    }, sigma);
+    r = await idleCoin(false);
+    const rs = await idleCoin(true);
+    check('B3 Kek coin auto-collects after 20 s idle; never under Sigma Slam', r.collected && r.kek === 1 && !rs.collected && rs.kek === 0, JSON.stringify({ normal: r, sigma: rs }));
+
+    // Pepe: label shows the mode + seconds, changes with the mood, logs; timer only runs while slotted
+    r = await page.evaluate(async () => {
+      G.moodIndex = 0; G.moodTimer = 5;
+      await new Promise(res => setTimeout(res, 300));
+      const frozen = G.moodTimer === 5;
+      _binderSelectedSlot = 0; devGiveCard('bi_r2'); equipCard('bi_r2');
+      await new Promise(res => setTimeout(res, 300));
+      const label = () => _slotRefs.binder[0].thumb.querySelector('.slot-card-fx').textContent;
+      const a = label();
+      G.moodTimer = 29.8;
+      await new Promise(res => setTimeout(res, 600));
+      const b = label();
+      saveGame();
+      return { frozen, a, b, idx: G.moodIndex, logged: document.getElementById('log-content').textContent.includes("Pepe's mood") };
+    });
+    check('B3 Pepe: label "Mood: +20% APS (Ns)" → next mode, logged; frozen while unslotted', r.frozen && /^Mood: \+20% APS \(\d+s\)$/.test(r.a) && /^Mood: \+20% APC \(\d+s\)$/.test(r.b) && r.idx === 1 && r.logged, JSON.stringify(r));
+    await reloadPage(page, errs);
+    await midState(page);
+    r = await page.evaluate(() => ({ idx: G.moodIndex, t: G.moodTimer }));
+    check('B3 Pepe: moodIndex / moodTimer saved and loaded', r.idx === 1 && r.t >= 0 && r.t < 5, JSON.stringify(r));
+    await page.evaluate(() => unequipSlot(0));
+
+    // Ugandan spawns all 8 at once
+    await use(['bu_u3']);
+    r = await page.evaluate(() => document.querySelectorAll('#burn-fx .burn-target').length);
+    check('B3 Ugandan: 8 knuckles at once', r === 8, String(r));
+    await page.evaluate(() => document.querySelectorAll('#burn-fx .burn-target').forEach(t => t.click()));
+
+    // End of Ze World pays per kill, Kek bonus only for all 25
+    await use(['bu_r5']);
+    r = await page.evaluate(async () => {
+      const base = computeBaseEAS(), k0 = G.kekCoins;
+      let a0 = G.aura; document.querySelector('#burn-fx .burn-target').click();
+      const first = (G.aura - a0) / base, kekAfterOne = G.kekCoins - k0;
+      for (let i = 0; i < 24; i++) { await new Promise(res => setTimeout(res, 20)); document.querySelector('#burn-fx .burn-target')?.click(); }
+      return { first, kekAfterOne, kek: G.kekCoins - k0, total: (G.aura - a0) / base };
+    });
+    check('B3 End of Ze World: 36 EAS per missile, +10 Kek only when all 25 die', Math.abs(r.first - 36) < 0.5 && r.kekAfterOne === 0 && r.kek === 10 && r.total > 899, JSON.stringify(r));
+
+    // Numa: pulses away from the centre, gone after the 0.6 s hit window
+    await use(['bu_u10']);
+    await sleep(150);
+    r = await page.evaluate(async () => {
+      const find = () => [...document.querySelectorAll('div')].find(d => d.textContent === '🎵' && d.style.zIndex === '600');
+      const el = find();
+      const pos = el ? [el.style.left, el.style.top] : null;
+      await new Promise(res => setTimeout(res, 750));
+      return { pos, goneAfterWindow: !el || !el.parentNode };
+    });
+    const [lx, ty] = r.pos ? r.pos.map(parseFloat) : [NaN, NaN];
+    check('B3 Numa: pulse at a random 25–75vw / 25–70vh spot, removed after 0.6 s', r.pos && r.pos[0].endsWith('vw') && lx >= 25 && lx <= 75 && ty >= 25 && ty <= 70 && r.goneAfterWindow, JSON.stringify(r));
+    await sleep(10500);
+
+    // Keyboard Cat zones leave the nugget clickable
+    await use(['bu_u9']);
+    r = await page.evaluate(() => { const z = document.querySelector('.rhythm-zone'); const c = $nuggetContainer.getBoundingClientRect(); const zr = z.getBoundingClientRect(); return { left: z.style.left, clear: zr.left > c.left + c.width / 2 }; });
+    check('B3 Keyboard Cat: zones start at 60% (nugget centre clear)', r.left === '60%' && r.clear, JSON.stringify(r));
+    await page.evaluate(() => document.querySelectorAll('.rhythm-zone').forEach(z => z.click()));
+    await sleep(500);
+
+    // Pigeon: zigzag stays on screen and wiggles
+    await use(['bu_c2']);
+    r = await page.evaluate(async () => {
+      const el = await new Promise(res => { const t = setInterval(() => { const e = [...$burnFx.querySelectorAll('.burn-coin')].find(e => e.textContent === '🦋'); if (e) { clearInterval(t); res(e); } }, 20); });
+      const xs = [];
+      for (let i = 0; i < 12; i++) { xs.push(parseFloat(el.style.left)); await new Promise(res => setTimeout(res, 100)); }
+      let turns = 0; for (let i = 2; i < xs.length; i++) if ((xs[i] - xs[i - 1]) * (xs[i - 1] - xs[i - 2]) < 0) turns++;
+      return { min: Math.min(...xs), max: Math.max(...xs), turns };
+    });
+    check('B3 Pigeon: sine zigzag (direction changes), kept within 2–95vw', r.turns >= 1 && r.min >= 2 && r.max <= 95, JSON.stringify(r));
+
+    // El Risitas violent shake; Ermahgerd particle; AYB trims old clicks
+    await use(['bu_r4']);
+    r = await page.evaluate(() => document.body.style.animation);
+    check('B3 El Risitas: violent shake (12 iterations)', r.includes('12'), r);
+    await use(['bu_c17']);
+    r = await page.evaluate(() => { document.body.click(); return [...document.querySelectorAll('.click-particle')].some(p => p.textContent === '+3s!'); });
+    check('B3 Ermahgerd: mash particle reads "+3s!"', r);
+    r = await page.evaluate(() => { G.recentClickTimestamps = [Date.now() - 60000, Date.now() - 45000, Date.now() - 1000]; G.burnCooldownUntil = 0; devGiveCard('bu_c18'); activateBurn('bu_c18'); return G.recentClickTimestamps.length; });
+    check('B3 All Your Base: reads only the last 30 s of clicks', r === 1, String(r));
+
+    // Ohio: 30% boss chance; This is Fine reads its mult; Moth vignette follows the cursor; Philosoraptor ❓
+    r = await page.evaluate(() => {
+      _binderSelectedSlot = 'field'; devGiveCard('f1'); equipCard('f1');
+      const realBoss = startBossFight; let bosses = 0; startBossFight = () => { bosses++; };
+      const N = 4000;
+      for (let i = 0; i < N; i++) { activeEvent = null; spawnEvent(); }
+      startBossFight = realBoss; activeEvent = null;
+      document.querySelectorAll('.event-entity').forEach(e => e.remove());
+      unequipFieldSlot();
+      return bosses / N;
+    });
+    check('B3 Ohio: boss chance per event ≈ 30%', r > 0.28 && r < 0.32, (r * 100).toFixed(1) + '%');
+    r = await page.evaluate(() => { _binderSelectedSlot = 'field'; devGiveCard('f5'); equipCard('f5'); const p = CARD_BY_ID.get('f5').params; const m0 = p.mult; p.mult = 0.3; const v = getFieldMult(); p.mult = m0; unequipFieldSlot(); return v; });
+    check('B3 This is Fine: base reads params.mult', Math.abs(r - 0.3) < 1e-9, String(r));
+    await page.mouse.move(321, 234);
+    r = await page.evaluate(() => [document.body.style.getPropertyValue('--mx'), document.body.style.getPropertyValue('--my')]);
+    check('B3 Moth: vignette variables follow the cursor', r[0] === '321px' && r[1] === '234px', r.join(','));
+    r = await page.evaluate(async () => {
+      _binderSelectedSlot = 0; devGiveCard('bi_c4'); equipCard('bi_c4');
+      CARD_BY_ID.get('bi_c4')._lastDrop = 1;
+      await new Promise(res => setTimeout(res, 300));
+      const drop = [...$burnFx.querySelectorAll('.burn-coin')].find(e => e.textContent === '❓');
+      unequipSlot(0);
+      return !!drop;
+    });
+    check('B3 Philosoraptor: drop is ❓', r);
+
+    await sleep(1000);
+    check('B3: no page/console errors', errs.length === 0, errs.slice(0, 8).join(' | '));
     await ctx.close();
   },
 };

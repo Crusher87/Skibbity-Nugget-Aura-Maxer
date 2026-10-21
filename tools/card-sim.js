@@ -21,7 +21,7 @@
 'use strict';
 const fs = require('fs');
 const path = require('path');
-const vm = require('vm');
+const { loadLiterals } = require('./lib/extract');
 
 // ---------- CLI ----------
 const argv = process.argv.slice(2);
@@ -35,33 +35,8 @@ const GAME_JS = path.resolve(__dirname, '..', arg('--game', 'game.js'));
 const SRC = fs.readFileSync(GAME_JS, 'utf8');
 const SRC_LINES = SRC.split('\n');
 
-// Bracket matcher that skips over string literals and comments.
-function extractLiteral(name) {
-  const m = new RegExp(`const\\s+${name}\\s*=\\s*`).exec(SRC);
-  if (!m) throw new Error(`Could not find "const ${name} =" in game.js`);
-  let i = m.index + m[0].length;
-  const open = SRC[i], close = open === '{' ? '}' : open === '[' ? ']' : null;
-  if (!close) throw new Error(`${name} is not an object/array literal`);
-  let depth = 0, start = i;
-  for (; i < SRC.length; i++) {
-    const ch = SRC[i];
-    if (ch === '"' || ch === "'" || ch === '`') {
-      const q = ch; i++;
-      while (i < SRC.length && SRC[i] !== q) { if (SRC[i] === '\\') i++; i++; }
-      continue;
-    }
-    if (ch === '/' && SRC[i + 1] === '/') { while (i < SRC.length && SRC[i] !== '\n') i++; continue; }
-    if (ch === '/' && SRC[i + 1] === '*') { i = SRC.indexOf('*/', i + 2) + 1; continue; }
-    if (ch === open) depth++;
-    else if (ch === close) { depth--; if (depth === 0) return SRC.slice(start, i + 1); }
-  }
-  throw new Error(`Unbalanced literal for ${name}`);
-}
-const sandbox = {};
-vm.createContext(sandbox);
-const BAL = vm.runInContext('(' + extractLiteral('BAL') + ')', sandbox);
-const UPGRADES = vm.runInContext('(' + extractLiteral('UPGRADES') + ')', sandbox);
-const CARD_LIBRARY = vm.runInContext('(' + extractLiteral('CARD_LIBRARY') + ')', sandbox);
+// Literal extraction lives in tools/lib/extract.js (shared with gen-cards-csv.js).
+const { BAL, UPGRADES, CARD_LIBRARY } = loadLiterals(SRC, ['BAL', 'UPGRADES', 'CARD_LIBRARY']);
 const CARD_BY_ID = new Map(CARD_LIBRARY.map(c => [c.id, c]));
 
 // Line lookup so the report cites current game.js lines.
@@ -171,7 +146,7 @@ function getFieldMult(G) {
   if (!G.fieldSlot) return 0;
   const card = CARD_BY_ID.get(G.fieldSlot);
   if (!card || card.archetype !== 'FIELD_THEME') return 0;
-  if (card.id === 'f5') return 0.25 + G.fireLevel * (card.params.fireAuraPer || 0.08);
+  if (card.id === 'f5') return (card.params.mult || 0.25) + G.fireLevel * (card.params.fireAuraPer || 0.08);
   return card.params.mult || 0;
 }
 // Mirrors computeEAS() — includes the temporary APS mult (apsBuffMult(); Rickroll etc). Live ticker / UI only.
@@ -271,9 +246,11 @@ const BURN_MODELS = {
     return { aura: eas * auraCoins * (p.valueEASEach || 0) * h, kek: kekCoins * h, note: `${auraCoins} coins × ${p.valueEASEach}${kekCoins ? ` + ${kekCoins} Kek coins` : ''}` };
   },
   // spawnBurnTarget() — reward fixed at activation, paid only if ALL targets die. Run success = h.
+  // payPerTarget (End of Ze World): each kill pays rewardEAS / targets; h = per-item hit rate; kekBonus × h (sim convention).
   TARGET_CHASE(card, p, G, h) {
     if (p.kekReward) return { aura: 0, kek: p.kekReward * h, note: `${p.hp || 1} HP, Kek reward` };
-    return { aura: computeBaseEAS(G) * (p.rewardEAS || 60) * h, kek: (p.kekBonus || 0) * h, note: `${p.targets} target(s)/${p.timeout}s, all-or-nothing` };
+    if (p.payPerTarget) return { aura: computeBaseEAS(G) * (p.rewardEAS || 60) * h, kek: (p.kekBonus || 0) * h, note: `${p.targets} targets/${p.timeout}s, ${f((p.rewardEAS || 60) / p.targets, 0)} EAS each, Kek bonus if all` };
+    return { aura: computeBaseEAS(G) * (p.rewardEAS || 60) * h, kek: (p.kekBonus || 0) * h, note: `${p.targets} target(s)/${p.timeout}s, all-or-nothing${p.swarm ? ', all at once' : ''}` };
   },
   // EFFECT_HANDLERS.GAMBLE — EV.
   GAMBLE(card, p, G) {
@@ -463,12 +440,16 @@ table(['Card', 'id', 'R', 'Archetype', 'Early APS/APC/Total', 'Mid APS/APC/Total
 P('## (d) Field cards');
 P('Field mult is additive with the SAUCE global mult (getFieldMult + allAuraMult), so its relative value shrinks once Sigma Glaze is bought.');
 P('');
+// tickKekCoins(): resting nugget coins auto-collect after KEK_IDLE_TIMEOUT_S, except under Sigma Slam.
+const KEK_IDLE_S = Number((/const KEK_IDLE_TIMEOUT_S\s*=\s*([0-9.]+)/.exec(SRC) || [])[1]) || 20;
+// Mirrors spawnEvent(): forced-boss roll bossBias = (boost − 1) × 0.2 / 0.8, else 1 in 5 EVENTS.
+function ohioBossChance(boost) { const b = boost > 1 ? (boost - 1) * 0.2 / 0.8 : 0; return b + (1 - b) / 5; }
 function fieldTradeoff(p) {
   const t = [];
-  if (p.disableAutoCollect) t.push('disables all AUTO_COLLECT burns and Doge auto-collect (burn is still consumed)');
+  if (p.disableAutoCollect) t.push('AUTO_COLLECT burns refused (card kept, Boyfriend echo allowed), no Doge auto-collect, Kek coins don\'t auto-collect after ' + KEK_IDLE_S + 's (they do on other Fields)');
   if (p.blackoutInterval) t.push(`blackout ${p.blackoutDuration}s every ${p.blackoutInterval}s (${f(p.blackoutDuration / (p.blackoutInterval + p.blackoutDuration) * 100, 0)}% of the time dark)`);
   if (p.fireInterval) t.push(`ramps ${f(p.mult * 100)}%→${f((p.mult + p.fireMaxLevel * p.fireAuraPer) * 100)}% over ${p.fireInterval * p.fireMaxLevel}s, resets when unequipped`);
-  if (p.bossSpawnMult) { const base = 1 / 5, ohio = (p.bossSpawnMult - 1) * 0.2 + (1 - (p.bossSpawnMult - 1) * 0.2) * base; t.push(`boss chance per event ${f(base * 100)}%→${f(ohio * 100)}% (+${f((ohio / base - 1) * 100)}%, text says +${f((p.bossSpawnMult - 1) * 100)}%), +${p.kekBossReward} Kek per win`); }
+  if (p.bossSpawnMult) { const base = 1 / 5, ohio = ohioBossChance(p.bossSpawnMult); t.push(`boss chance per event ${f(base * 100)}%→${f(ohio * 100)}% (+${f((ohio / base - 1) * 100)}%, text says +${f((p.bossSpawnMult - 1) * 100)}%), +${p.kekBossReward} Kek per win`); }
   if (p.coinTrailInterval) t.push(`Nyan Cat every ${p.coinTrailInterval}s worth 3 Kek if clicked = ${f(3 * 60 / p.coinTrailInterval, 1)} Kek/min (${f(3 * 60 / p.coinTrailInterval / KEK_MIN * 100)}% of click Kek)`);
   if (p.kekDropBonus) t.push(`+${p.kekDropBonus} Kek per spawnKekCoin = +${f(kekPerMin({ pbj: true }) - KEK_MIN, 1)} Kek/min (+${f(p.kekDropBonus * 100)}%); also on Brian / Nyan coins`);
   if (p.cardDropRate) t.push('cardDropRate: NOOP (no card drops exist)');
@@ -580,7 +561,7 @@ table(['State', `Frenzy extra (EAS) @${FCPS}cps`, 'of which APS ×10', 'of which
   }));
 {
   const evMean = (BAL.EVENT_SPAWN_MIN_S + BAL.EVENT_SPAWN_MAX_S) / 2, pBoss = 1 / 5;  // EVENTS has 5 entries, 1 boss
-  const ohio = CARD_BY_ID.get('f1').params.bossSpawnMult, pOhio = (ohio - 1) * 0.2 + (1 - (ohio - 1) * 0.2) * pBoss;
+  const pOhio = ohioBossChance(CARD_BY_ID.get('f1').params.bossSpawnMult);
   P(`Events every ${BAL.EVENT_SPAWN_MIN_S}–${BAL.EVENT_SPAWN_MAX_S}s (mean ${evMean}s): boss ${f(pBoss * 100)}% (one per ${f(evMean / pBoss / 60, 1)} min), Ohio ${f(pOhio * 100)}% (one per ${f(evMean / pOhio / 60, 1)} min → ${f(CARD_BY_ID.get('f1').params.kekBossReward * 60 / (evMean / pOhio), 2)} Kek/min if every boss is won), Gyatt 20%, Fanum Tax 60% (−10% bank if not clicked within 3s). Boss: ${BAL.BOSS_DRAIN_PCT_PER_SEC * 100}%/s drain, cap ${BAL.BOSS_DRAIN_CAP * 100}%, AFK auto-resolve after ${BAL.BOSS_AUTO_RESOLVE_IDLE_S}s (= ${f(BAL.BOSS_DRAIN_PCT_PER_SEC * BAL.BOSS_AUTO_RESOLVE_IDLE_S * 100)}% lost), win needs ${BAL.BOSS_CLICKS_TO_DEFEAT} clicks in ${BAL.BOSS_DEFEAT_WINDOW_S}s.`);
   P('');
 }
