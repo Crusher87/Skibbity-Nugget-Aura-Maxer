@@ -145,7 +145,7 @@ function getBinderStats(G) {
       case 'BIGGER_TARGET': apcMultBonus += p.apcBonus || 0; if (p.hitboxBonus) hitboxBonus = true; break;
       case 'COST_REDUCTION': costReduce = Math.max(costReduce, p.reduce || 0); addMult += p.globalMult || 0; kekPackDiscount += p.kekPackDiscount || 0; break;
       case 'EVENT_SOFTENER': drainMult *= (p.drainMult || 1); addMult += p.globalMult || 0; break;
-      case 'SCALING_OVER_TIME': apcMultBonus += (p.apcPerMin || 0) * G.brainMinutes; break; // uncapped in game
+      case 'SCALING_OVER_TIME': apcMultBonus += Math.min(p.capPct || 0, (p.apcPerMin || 0) * G.brainMinutes); break; // G.brainMinutes, capped
       case 'MOOD_SWING': {
         const mode = G.moodIndex % 3;
         if (mode === 0) apsMultBonus += p.moodAps || 0.15;
@@ -174,13 +174,13 @@ function getFieldMult(G) {
   if (card.id === 'f5') return 0.25 + G.fireLevel * (card.params.fireAuraPer || 0.08);
   return card.params.mult || 0;
 }
-// Mirrors computeEAS() — includes the temporary APS mult (Rickroll etc).
+// Mirrors computeEAS() — includes the temporary APS mult (apsBuffMult(); Rickroll etc). Live ticker / UI only.
 function computeEAS(G) {
   const bs = getBinderStats(G);
   const aps = (G.auraPerSecond + bs.addAps) * G.apsMultValue;
   return Math.max(1, aps * (G.allAuraMult + bs.addMult + getFieldMult(G)));
 }
-// Mirrors computeBaseEAS() — no temporary APS mult.
+// Mirrors computeBaseEAS() — no temporary APS mult. Every one-shot payout reads this (B1.3).
 function computeBaseEAS(G) {
   const bs = getBinderStats(G);
   return Math.max(1, (G.auraPerSecond + bs.addAps) * (G.allAuraMult + bs.addMult + getFieldMult(G)));
@@ -221,6 +221,8 @@ const KEK_MIN = kekPerMin();
 // ---------- 5. Burn models (one per archetype) ----------
 // Each returns { aura, kek, note } for a hit/success rate h. `aura` is extra
 // Aura over just clicking normally; the table divides it by computeEAS().
+// D6 per-click EAS bonus (doClick / AUTO_COLLECT loop): min(capEAS, easPerClick × qualifying clicks) × computeBaseEAS().
+function d6(p, G, clicks) { return Math.min(p.capEAS || 0, (p.easPerClick || 0) * clicks) * computeBaseEAS(G); }
 const BURN_MODELS = {
   // EFFECT_HANDLERS.INSTANT_BURST — pays computeBaseEAS() × seconds.
   INSTANT_BURST(card, p, G, h) {
@@ -240,27 +242,29 @@ const BURN_MODELS = {
   },
   // EFFECT_HANDLERS.TEMP_APS_MULT — extra = (mult-1) × duration seconds of income.
   TEMP_APS_MULT(card, p, G) {
-    return { aura: computeEAS(G) * ((p.mult || 1) - 1) * (p.duration || 10), kek: 0, note: p.pauseBoss ? 'also freezes boss drain' : 'also ×mult on computeEAS payouts while active' };
+    return { aura: computeEAS(G) * ((p.mult || 1) - 1) * (p.duration || 10), kek: 0, note: p.pauseBoss ? 'also freezes boss drain' : 'own apsBuffs entry; additive, APS_MULT_CAP ' + BAL.APS_MULT_CAP };
   },
-  // EFFECT_HANDLERS.TEMP_CLICK_MULT — capped at CLICK_MULT_CAP, clicks at CPS.
+  // EFFECT_HANDLERS.TEMP_CLICK_MULT — own clickBuffs entry, capped at CLICK_MULT_CAP, clicks at CPS, + D6.
   TEMP_CLICK_MULT(card, p, G) {
-    const m = Math.min(BAL.CLICK_MULT_CAP, p.mult || 1);
-    return { aura: (m - 1) * (p.duration || 10) * CPS * clickValue(G), kek: 0, note: `${m}×${p.duration}s @${CPS}cps` };
+    const m = Math.min(BAL.CLICK_MULT_CAP, p.mult || 1), clicks = CPS * (p.duration || 10);
+    return { aura: (m - 1) * clicks * clickValue(G) + d6(p, G, clicks), kek: 0, note: `${m}×${p.duration}s @${CPS}cps` };
   },
   // EFFECT_HANDLERS.PRECISION + doClick() center check (OAG).
   PRECISION(card, p, G, h) {
     const n = CPS * (p.duration || 10), m = Math.min(BAL.CLICK_MULT_CAP, p.mult || 1), cv = clickValue(G);
-    if (p.deadCenterOnly) {   // every click lands; only center hits get the mult + Kek
-      return { aura: n * h * (m - 1) * cv, kek: n * h * (p.kekPerHit || 0), note: `${Math.round(n * h)} center hits` };
+    const hits = n * h;
+    const kek = p.kekEveryNHits ? Math.min(p.kekCap || 0, Math.floor(hits / p.kekEveryNHits)) : 0;
+    if (p.deadCenterOnly) {   // every click lands; only center hits get the mult, D6 and Kek
+      return { aura: hits * (m - 1) * cv + d6(p, G, hits), kek, note: `${Math.round(hits)} center hits` };
     }
     // invisible / small nugget: misses don't register at all (lose the base click too)
-    return { aura: n * h * m * cv - n * cv, kek: n * h * (p.kekPerHit || 0), note: `${Math.round(n * h)}/${n} hits` };
+    return { aura: hits * m * cv - n * cv + d6(p, G, hits), kek, note: `${Math.round(hits)}/${n} hits` };
   },
   // EFFECT_HANDLERS.COIN_RAIN — coins pay computeEAS() × valueEASEach on click.
   COIN_RAIN(card, p, G, h) {
-    const eas = computeEAS(G), total = p.coins || 10;
-    if (p.motion === 'bones') {                      // Gabe: all-or-nothing Kek, run success = h
-      return { aura: 0, kek: (p.kekReward || 0) * h, note: `${p.kekReward} Kek only if all ${total} caught` };
+    const eas = computeBaseEAS(G), total = p.coins || 10;
+    if (p.motion === 'bones') {                      // Gabe: kekPerBone per caught bone, per-bone hit rate = h
+      return { aura: 0, kek: (p.kekPerBone || 0) * total * h, note: `${p.kekPerBone} Kek per bone × ${total}` };
     }
     const kekCoins = p.kekEveryNth ? Math.floor(total / p.kekEveryNth) : 0;   // spawnBurnKekCoin() = 1 Kek each
     const auraCoins = total - kekCoins;
@@ -269,21 +273,22 @@ const BURN_MODELS = {
   // spawnBurnTarget() — reward fixed at activation, paid only if ALL targets die. Run success = h.
   TARGET_CHASE(card, p, G, h) {
     if (p.kekReward) return { aura: 0, kek: p.kekReward * h, note: `${p.hp || 1} HP, Kek reward` };
-    return { aura: computeEAS(G) * (p.rewardEAS || 60) * h, kek: (p.kekBonus || 0) * h, note: `${p.targets} target(s)/${p.timeout}s, all-or-nothing` };
+    return { aura: computeBaseEAS(G) * (p.rewardEAS || 60) * h, kek: (p.kekBonus || 0) * h, note: `${p.targets} target(s)/${p.timeout}s, all-or-nothing` };
   },
   // EFFECT_HANDLERS.GAMBLE — EV.
   GAMBLE(card, p, G) {
     return { aura: computeBaseEAS(G) * (p.winEAS || 0) * (p.p || 0.5), kek: 0, note: `EV of ${p.winEAS} @ p=${p.p}` };
   },
-  // EFFECT_HANDLERS.AUTO_COLLECT — auto clicks use p.mult only (no clickMult, crit, frenzy, Kek).
+  // EFFECT_HANDLERS.AUTO_COLLECT — auto clicks use p.mult only (no clickMult, crit, frenzy, Kek), + D6.
   AUTO_COLLECT(card, p, G) {
-    if (p.echoClick) {   // doClick() echo: duplicates each manual click's `earned`
-      return { aura: CPS * (p.echoDuration || 8) * clickValue(G), kek: 0, note: `${CPS * (p.echoDuration || 8)} echoed clicks` };
+    if (p.echoClick) {   // doClick() echo: clickBase × min(clickMult, CLICK_MULT_CAP), no frenzy
+      const clicks = CPS * (p.echoDuration || 8);
+      return { aura: clicks * clickValue(G) + d6(p, G, clicks), kek: 0, note: `${clicks} echoed clicks` };
     }
-    return { aura: (p.clicks || 10) * (p.mult || 1) * clickValue(G), kek: 0, note: `${p.clicks}×${p.mult} click${p.piercesBoss ? ', 12 boss hits' : ''}` };
+    return { aura: (p.clicks || 10) * (p.mult || 1) * clickValue(G) + d6(p, G, p.clicks || 10), kek: 0, note: `${p.clicks}×${p.mult} click${p.piercesBoss ? ', 12 boss hits' : ''}` };
   },
   // EFFECT_HANDLERS.SCREEN_GAG — pity payout at end of gag.
-  SCREEN_GAG(card, p, G) { return { aura: computeEAS(G) * (p.pityEAS || 30), kek: 0, note: `${p.gagDuration || 3}s gag` }; },
+  SCREEN_GAG(card, p, G) { return { aura: computeBaseEAS(G) * (p.pityEAS || 30), kek: 0, note: `${p.gagDuration || 3}s gag` }; },
   // spawnRhythmGame() — perfect run = rarity budget; score fraction ≈ h.
   RHYTHM(card, p, G, h) {
     const budget = card.rarity === 'rare' ? BAL.EAS_RARE : card.rarity === 'common' ? BAL.EAS_COMMON : BAL.EAS_UNCOMMON;
@@ -319,7 +324,7 @@ function binderEffect(card, state) {
     }
     case 'IDLE_DRIP': note = `+${((p.idleApsMult - 1) * 100).toFixed(0)}% APS only after ${p.idleThreshold}s idle (0 while clicking)`; break;
     case 'CRIT_CHANCE': cv1 = cv0 * (1 + (p.mult - 1) / p.everyN); note = `avg over ${p.everyN} clicks`; break;
-    case 'SCALING_OVER_TIME': note = `at ${state.brainMinutes} min since first slotted; 1 day = +${(p.apcPerMin * 1440 * 100).toFixed(0)}%`; break;
+    case 'SCALING_OVER_TIME': note = `at ${state.brainMinutes} min played while slotted; cap +${(p.capPct * 100).toFixed(0)}% APC reached at ${(p.capPct / p.apcPerMin).toFixed(0)} min`; break;
     case 'MOOD_SWING': {
       const modes = [0, 1, 2].map(i => { const g = withBinder(state, [card.id], { moodIndex: i }); return apsIncome(g) + CPS * clickValue(g); });
       const avgAps = [0, 1, 2].map(i => apsIncome(withBinder(state, [card.id], { moodIndex: i }))).reduce((a, b) => a + b) / 3;
@@ -539,25 +544,25 @@ table(['Pack #', 'Cost', 'Cost w/ Grumpy+SK(max)', 'Cumulative Kek (+shop)', 'Mi
 
 // (f) multi-copy
 P('## (f) Multi-copy "Use All" (activateBurnMulti) N = 2..10');
-P('Multiplier in code is 2^N − 1 for KEK_SPAWN and INSTANT_BURST; KEK_DOUBLE_BUFF and Gabe (COIN_RAIN kekReward) are linear and Gabe skips the minigame. "Packs to hold N" = N ÷ per-pack odds of that card (no luck), "Kek" = cumulative pack cost from a fresh save.');
+P(`"Use All" consumes min(N, MULTI_COPY_CAP = ${BAL.MULTI_COPY_CAP}) copies; the rest stay in the hand. Multiplier is 2^n − 1 for KEK_SPAWN and INSTANT_BURST; KEK_DOUBLE_BUFF and Gabe (one bone run, every bone × n, skilled hit rate) are linear. "all vs n singles" compares the n copies used. "Packs to hold N" = N ÷ per-pack odds of that card (no luck), "Kek" = cumulative pack cost from a fresh save.`);
 P('');
 const multi = CARD_LIBRARY.filter(c => c.type === 'Burn' && c.params && c.params.multiKekBonus);
 const midG = baseG(REF_STATES[1]);
-function multiPayout(card, n) {   // mirrors activateBurnMulti()
-  const p = card.params, mult = Math.pow(2, n) - 1;
+function multiPayout(card, N) {   // mirrors activateBurnMulti()
+  const p = card.params, n = Math.min(N, BAL.MULTI_COPY_CAP), mult = Math.pow(2, n) - 1;
   if (card.archetype === 'KEK_SPAWN') return { v: (p.kekCoins || 2) * mult, single: (p.kekCoins || 2) * n, unit: 'Kek' };
   if (card.archetype === 'KEK_DOUBLE_BUFF') return { v: (p.doubleCount || 5) * n, single: (p.doubleCount || 5) * n, unit: 'Kek' };
-  if (card.archetype === 'COIN_RAIN' && p.kekReward) return { v: (p.kekReward || 10) * n, single: (p.kekReward || 10) * n * HIT.skilled, unit: 'Kek' };
+  if (card.archetype === 'COIN_RAIN') { const one = (p.kekPerBone || 0) * (p.coins || 25) * HIT.skilled; return { v: one * n, single: one * n, unit: 'Kek' }; }
   if (card.archetype === 'INSTANT_BURST') return { v: (p.apsSeconds || 600) * mult, single: (p.apsSeconds || 600) * n, unit: 'EAS' };
   return { v: 0, single: 0, unit: '?' };
 }
 const nRows = [];
 for (let n = 2; n <= 10; n++) {
-  nRows.push([n, Math.pow(2, n) - 1, ...multi.map(c => { const m = multiPayout(c, n); return `${f(m.v)} vs ${f(m.single)}`; }),
+  nRows.push([n, Math.pow(2, Math.min(n, BAL.MULTI_COPY_CAP)) - 1, ...multi.map(c => { const m = multiPayout(c, n); return `${f(m.v)} vs ${f(m.single)}`; }),
     ...multi.map(c => { const packs = Math.ceil(n / cardOdds(c)); return `${f(packs)} (${f(cumPackKek(packs) / 1000, 1)}k)`; })]);
 }
-table(['N', '2^N−1', ...multi.map(c => `${c.name} (${multiPayout(c, 2).unit}): all vs N singles`), ...multi.map(c => `Packs to hold N ${c.name} (Kek)`)], nRows);
-P(`El Risitas at Mid (computeBaseEAS ${f(computeBaseEAS(midG))}): N=3 → ${f(computeBaseEAS(midG) * 600 * 7)} Aura; N=10 → ${f(computeBaseEAS(midG) * 600 * 1023)} Aura.`);
+table(['N', '2^n−1 (n capped)', ...multi.map(c => `${c.name} (${multiPayout(c, 2).unit}): all vs n singles`), ...multi.map(c => `Packs to hold N ${c.name} (Kek)`)], nRows);
+P(`El Risitas at Mid (computeBaseEAS ${f(computeBaseEAS(midG))}): N=3 → ${f(computeBaseEAS(midG) * 600 * 7)} Aura; N=10 → ${f(computeBaseEAS(midG) * 600 * (Math.pow(2, Math.min(10, BAL.MULTI_COPY_CAP)) - 1))} Aura (capped at ${BAL.MULTI_COPY_CAP} copies).`);
 P('');
 
 // (g) systems: frenzy, events, boss

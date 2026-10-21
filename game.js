@@ -18,7 +18,10 @@ const BAL = {
   BINDER_SLOTS: 5,
   BURN_INVENTORY_CAP: 10,
   BURN_GLOBAL_COOLDOWN_MS: 1500,
-  CLICK_MULT_CAP: 10,                  // hard cap on TEMP_CLICK_MULT stacking
+  CLICK_MULT_CAP: 10,                  // cap on the summed card click buffs (Gyatt rides on top)
+  CLICK_TOTAL_CAP: 100,                // cap on buffs × crit × Arthur for one click, before frenzy
+  APS_MULT_CAP: 5,                     // cap on the summed temp APS buffs (Rickroll, Charlie, Dream)
+  MULTI_COPY_CAP: 3,                   // "Use All" consumes at most this many copies
   EAS_COMMON: 30,                      // base EAS budget per Burn rarity
   EAS_UNCOMMON: 120,
   EAS_RARE: 600,
@@ -53,18 +56,14 @@ const G = {
   clickTimestamps: [],
   recentClickTimestamps: [],       // last 30s of clicks — used by All Your Base
   frenzyMeter: 0,
-  clickMultTimer: 0,
-  clickMultValue: 1,
-  kekPerHit: 0,        // Kek Koins awarded per click during active PRECISION window
-  precisionTimer: 0,   // seconds left in the active PRECISION window
-  precisionCenterOnly: false, // Overly Attached GF: only dead-center clicks get the bonus
+  // Active click buffs, each with its own timer; they stack additively (see clickBuffMult).
+  // { src, mult, t, uncapped, centerOnly, echo, easPerClick, capEAS, paidEAS, kekEveryNHits, kekCap, kekPaid, hits }
+  clickBuffs: [],
+  // Active temp APS buffs (TEMP_APS_MULT burns): { src, mult, t }
+  apsBuffs: [],
   doubleNextClick: false,     // Arthur Fist: next nugget click counts double
-  // Temp passive multiplier (from TEMP_APS_MULT burns)
-  apsMultTimer: 0,
-  apsMultValue: 1,
   bossPauseTimer: 0,   // Have You Ever Had A Dream: Skibidi drain frozen while > 0
-  echoTimer: 0,      // Distracted Boyfriend echo click duration remaining
-  echoOffset: 150,   // px offset of the echo click
+  echoOffset: 150,   // px offset of the Distracted Boyfriend echo click
   owned: { ketchup: 0, ranch: 0, szechuan: 0, grimace: 0, sigma: 0 },
   // Card system
   cardShopUnlocked: false,
@@ -74,7 +73,7 @@ const G = {
   fieldSlot: null,                     // single active Field card id
   burnCooldownUntil: 0,                // timestamp of next allowed burn activation
   critClickCounter: 0,                 // for Chuck Norris CRIT_CHANCE
-  scalingStartTime: 0,                 // for Expanding Brain SCALING_OVER_TIME
+  brainMinutes: 0,                     // Expanding Brain: minutes played with it slotted (saved)
   moodIndex: 0,                        // for Pepe MOOD_SWING
   moodTimer: 0,
   lastIdleClickTime: 0,                // for IDLE_DRIP
@@ -133,7 +132,7 @@ const CARD_LIBRARY = [
   { id: 'bi_u3', name: 'Big Chungus', emoji: '🐰', type: 'Binder', rarity: 'uncommon', desc: 'Makes the nugget 1.5× bigger and gives +5% click Aura. Easier to click and easier to catch chase events!', flavor: 'Chonky. Unstoppable. Iconic.', archetype: 'BIGGER_TARGET', params: { scale: 1.5, apcBonus: 0.05, hitboxBonus: true } },
   { id: 'bi_u4', name: 'Hide the Pain Harold', emoji: '🙂', type: 'Binder', rarity: 'uncommon', desc: '+3% Aura boost always, plus Skibidi Toilet drains you 20% less. I\'m fine.', flavor: 'Everything is wonderful. Please send help.', archetype: 'EVENT_SOFTENER', params: { drainMult: 0.8, globalMult: 0.03 } },
   { id: 'bi_u5', name: 'I Can Has Cheezburger', emoji: '🍔', type: 'Binder', rarity: 'uncommon', desc: 'A burger floats by every 60s — click it to grab 120 Aura! Got Doge in another slot too? The burger doubles to 240 Aura!', flavor: 'O hai. Can I also has Aura?', archetype: 'TIMED_DROP', params: { interval: 60, valueEAS: 120, autoCollect: false, comboWith: 'bi_c5', comboMult: 2 } },
-  { id: 'bi_u6', name: 'Expanding Brain', emoji: '🧠', type: 'Binder', rarity: 'uncommon', desc: '+1% click Aura for every minute you play — it never stops growing! The longer you play, the better it gets.', flavor: 'Big brain time has arrived.', archetype: 'SCALING_OVER_TIME', params: { apcPerMin: 0.01 } },
+  { id: 'bi_u6', name: 'Expanding Brain', emoji: '🧠', type: 'Binder', rarity: 'uncommon', desc: '+1% click Aura for every minute you play with it slotted — up to +30%. The longer you play, the better it gets.', flavor: 'Big brain time has arrived.', archetype: 'SCALING_OVER_TIME', params: { apcPerMin: 0.01, capPct: 0.30 } },
   // Rare (×3)
   { id: 'bi_r1', name: 'Chuck Norris', emoji: '🥋', type: 'Binder', rarity: 'rare', desc: 'Every 10th click is a super crit hit for 10× Aura! ROUNDHOUSE!', flavor: 'Chuck Norris doesn\'t click the nugget. The nugget clicks itself.', archetype: 'CRIT_CHANCE', params: { everyN: 10, mult: 10 } },
   { id: 'bi_r2', name: 'Pepe (Mood Swing)', emoji: '🐸', type: 'Binder', rarity: 'rare', desc: 'Switches modes every 30s: +20% Aura/sec, then +20% click Aura, then +10% on everything — then repeats!', flavor: 'Feels good man. Feels bad man. Feels good again.', archetype: 'MOOD_SWING', params: { cycleSec: 30, moodAps: 0.20, moodApc: 0.20, moodGlobal: 0.10 } },
@@ -145,8 +144,8 @@ const CARD_LIBRARY = [
   { id: 'bu_c2', name: 'Is This a Pigeon?', emoji: '🦋', type: 'Burn', rarity: 'common', desc: '6 butterflies float around in crazy zigzag patterns! Click all of them in 4s for 7.5 Aura each.', flavor: 'Is this... Aura?', archetype: 'COIN_RAIN', params: { coins: 6, valueEASEach: 7.5, duration: 4, motion: 'sine' } },
   { id: 'bu_c3', name: 'Spiderman Pointing', emoji: '🕷️', type: 'Burn', rarity: 'common', desc: 'Two Spidermen point at each other — and every Kek Koin on screen gets scooped up! Then auto-clicks the nugget 10 times at 1.5× power.', flavor: 'That Spiderman is clicking MY nugget!', archetype: 'AUTO_COLLECT', params: { clicks: 10, mult: 1.5, duration: 5, autoCollectKekCoins: true } },
   { id: 'bu_c4', name: 'Distracted Boyfriend', emoji: '👀', type: 'Burn', rarity: 'common', desc: 'Every click spawns a second ghost click 150px away for 8s. Two clicks for the price of one!', flavor: 'One click becomes two. Somehow.', archetype: 'AUTO_COLLECT', params: { echoClick: true, echoDuration: 8, echoOffset: 150 } },
-  { id: 'bu_c5', name: 'Mocking SpongeBob', emoji: '🧽', type: 'Burn', rarity: 'common', desc: 'AlTeRnAtInG cAsE engaged! Your next 5 Kek Koins are worth DOUBLE. Stack multiple copies and use them all at once to double even more!', flavor: 'yOu CaNt StOp ReAdInG tHiS', archetype: 'KEK_DOUBLE_BUFF', params: { doubleCount: 5, multiKekBonus: true } },
-  { id: 'bu_c6', name: 'Bad Luck Brian', emoji: '😬', type: 'Burn', rarity: 'common', desc: 'Typical Bad Luck Brian — but this time he drops 2 Kek Koins! Hold multiple copies and use them all at once for exponential payout!', flavor: 'Got a card. It was this one.', archetype: 'KEK_SPAWN', params: { kekCoins: 2, multiKekBonus: true } },
+  { id: 'bu_c5', name: 'Mocking SpongeBob', emoji: '🧽', type: 'Burn', rarity: 'common', desc: 'AlTeRnAtInG cAsE engaged! Your next 5 nugget Kek Koins are worth DOUBLE. Use up to 3 copies at once for 15 doubles!', flavor: 'yOu CaNt StOp ReAdInG tHiS', archetype: 'KEK_DOUBLE_BUFF', params: { doubleCount: 5, multiKekBonus: true } },
+  { id: 'bu_c6', name: 'Bad Luck Brian', emoji: '😬', type: 'Burn', rarity: 'common', desc: 'Typical Bad Luck Brian — but this time he drops 2 Kek Koins! Use up to 3 copies at once: 2 → 6 → 14 coins!', flavor: 'Got a card. It was this one.', archetype: 'KEK_SPAWN', params: { kekCoins: 2, multiKekBonus: true } },
   { id: 'bu_c7', name: 'Epic Fail Guy', emoji: '🤡', type: 'Burn', rarity: 'common', desc: 'He faceplanted so you get a sympathy gift — 30 seconds worth of Aura right now!', flavor: 'FAIL. But like, a productive one.', archetype: 'INSTANT_BURST', params: { apsSeconds: 30 } },
   { id: 'bu_c8', name: 'Charlie Bit My Finger', emoji: '👶', type: 'Burn', rarity: 'common', desc: 'Ouch! That hurt! Get 1.5× Aura per second for 20s.', flavor: 'And it really hurt!', archetype: 'TEMP_APS_MULT', params: { mult: 1.5, duration: 20 } },
   { id: 'bu_c9', name: 'Have You Ever Had A Dream', emoji: '💭', type: 'Burn', rarity: 'common', desc: 'Whoa dude... 1.5× Aura per second for 20s AND the Skibidi Toilet freezes! What is real?', flavor: 'That you, um, you had, um, you would, um...', archetype: 'TEMP_APS_MULT', params: { mult: 1.5, duration: 20, pauseBoss: true } },
@@ -172,15 +171,15 @@ const CARD_LIBRARY = [
   { id: 'bu_u10', name: 'Numa Numa Dance', emoji: '💃', type: 'Burn', rarity: 'uncommon', desc: 'MA-IA-HI! A beat pulses on screen — click it in time with the rhythm 6 times in 10s for up to 5× Aura!', flavor: 'MA-IA-HI, MA-IA-HU, MA-IA-HO!', archetype: 'RHYTHM', params: { bpm: true, beats: 6, maxMult: 5, duration: 10 } },
   { id: 'bu_u11', name: 'Shooting Stars', emoji: '🌠', type: 'Burn', rarity: 'uncommon', desc: 'Woah — 15 neon stars shoot across the screen from left to right! Click them fast in 8s for 12 Aura each!', flavor: '♪ And in the night you hear me scream ♪', archetype: 'COIN_RAIN', params: { coins: 15, valueEASEach: 12, duration: 8, neon: true, motion: 'streak' } },
   { id: 'bu_u12', name: 'Rickroll', emoji: '🕺', type: 'Burn', rarity: 'uncommon', desc: 'We\'re no strangers to Aura! You\'ve been rickrolled — but in a good way! Get 3× Aura per second for 60s!', flavor: 'You know the rules. And so do I.', archetype: 'TEMP_APS_MULT', params: { mult: 3, duration: 60, fakeCrash: true } },
-  { id: 'bu_u13', name: 'Gabe the Dog', emoji: '🐕', type: 'Burn', rarity: 'uncommon', desc: 'Bork bork! 25 bones fly across the screen. Catch them ALL to earn 10 Kek Koins — way more useful than a click buff! Stack copies for exponential payout!', flavor: 'bork bork bork bork bork', archetype: 'COIN_RAIN', params: { coins: 25, duration: 10, motion: 'bones', kekReward: 10, multiKekBonus: true } },
+  { id: 'bu_u13', name: 'Gabe the Dog', emoji: '🐕', type: 'Burn', rarity: 'uncommon', desc: 'Bork bork! 25 bones fly across the screen — every bone you catch is worth 0.4 Kek Koins (10 for all 25). Use up to 3 copies at once to multiply every bone!', flavor: 'bork bork bork bork bork', archetype: 'COIN_RAIN', params: { coins: 25, duration: 10, motion: 'bones', kekPerBone: 0.4, multiKekBonus: true } },
   // Rare (×7) — base budget 600 EAS
   { id: 'bu_r1', name: 'John Cena', emoji: '💪', type: 'Burn', rarity: 'rare', desc: 'AND HIS NAME IS... THE NUGGET IS INVISIBLE! Click where you think it is for 15s — hit it for 7× Aura. Can you see him?', flavor: 'AND HIS NAME IS...', archetype: 'PRECISION', params: { duration: 15, mult: 7, invisibleNugget: true } },
   { id: 'bu_r2', name: 'Just Do It (Shia)', emoji: '🎯', type: 'Burn', rarity: 'rare', desc: 'JUST DO IT! A beat starts slow then speeds up — hit all 8 beats perfectly as it gets faster in 12s for up to 10× Aura!', flavor: 'Yesterday you said tomorrow!', archetype: 'RHYTHM', params: { accelerating: true, beats: 8, maxMult: 10, duration: 12 } },
   { id: 'bu_r3', name: 'Leroy Jenkins', emoji: '🛡️', type: 'Burn', rarity: 'rare', desc: 'LEEEEEROYYY JENKINSSSS! A target charges at you — click it in 3s to grab 900 Aura! He just ran in!', flavor: '...at least he has chicken.', archetype: 'TARGET_CHASE', params: { targets: 1, timeout: 3, rewardEAS: 900 } },
-  { id: 'bu_r4', name: 'El Risitas', emoji: '😂', type: 'Burn', rarity: 'rare', desc: 'JA JA JA! Normally banks 600 seconds of income — but hold 2 copies and burn both at once for 1800s, or 3 copies for 4200s. The laughs scale up!', flavor: 'jajajajajajajajaja', archetype: 'INSTANT_BURST', params: { apsSeconds: 600, shake: 'violent', multiKekBonus: true } },
+  { id: 'bu_r4', name: 'El Risitas', emoji: '😂', type: 'Burn', rarity: 'rare', desc: 'JA JA JA! Normally banks 600 seconds of income — but hold 2 copies and burn both at once for 1800s, or 3 copies for 4200s. The laughs scale up! (max 3 copies)', flavor: 'jajajajajajajajaja', archetype: 'INSTANT_BURST', params: { apsSeconds: 600, shake: 'violent', multiKekBonus: true } },
   { id: 'bu_r5', name: 'End of Ze World', emoji: '☄️', type: 'Burn', rarity: 'rare', desc: 'AMERICA!! Click 25 missiles in 15s — 900 Aura total. Click EVERY SINGLE ONE and you also earn 10 Kek Koins as a bonus for the perfect run!', flavor: 'WHAT DOES THAT MEAN?!', archetype: 'TARGET_CHASE', params: { targets: 25, timeout: 15, rewardEAS: 900, kekBonus: 10 } },
-  { id: 'bu_r6', name: 'Overly Attached GF', emoji: '😍', type: 'Burn', rarity: 'rare', desc: 'She\'s watching. Click ONLY the very center of the nugget for 15s — perfect center clicks earn 6× Aura AND drop 1 Kek Koin each. No wandering!', flavor: 'I turned off your auto-save. For us.', archetype: 'PRECISION', params: { duration: 15, mult: 6, deadCenterOnly: true, kekPerHit: 1 } },
-  { id: 'bu_r7', name: 'Evil Kermit', emoji: '🐸', type: 'Burn', rarity: 'rare', desc: 'Do it... it\'s a 50/50 gamble! Win and get 1800 Aura. Lose and get nothing. But if you win it\'s bigger than El Risitas!', flavor: 'But that\'s none of my business.', archetype: 'GAMBLE', params: { winEAS: 1800, p: 0.5 } },
+  { id: 'bu_r6', name: 'Overly Attached GF', emoji: '😍', type: 'Burn', rarity: 'rare', desc: 'She\'s watching. Click ONLY the very center of the nugget for 15s — center clicks get 6× Aura, and every 5th center click drops a Kek Koin (max 15). No wandering!', flavor: 'I turned off your auto-save. For us.', archetype: 'PRECISION', params: { duration: 15, mult: 6, deadCenterOnly: true, kekEveryNHits: 5, kekCap: 15, easPerClick: 1, capEAS: 90 } },
+  { id: 'bu_r7', name: 'Evil Kermit', emoji: '🐸', type: 'Burn', rarity: 'rare', desc: 'Do it... it\'s a 50/50 gamble! Win and get 1800 seconds of Aura — 3× a single El Risitas. Lose and get nothing.', flavor: 'But that\'s none of my business.', archetype: 'GAMBLE', params: { winEAS: 1800, p: 0.5 } },
 ];
 
 // O(1) lookup by id — replaces CARD_LIBRARY.find() in hot paths.
@@ -582,7 +581,7 @@ function cardEffectLabel(card) {
     case 'IDLE_DRIP': return `${p.idleApsMult || 1}× APS while idle`;
     case 'CRIT_CHANCE': return `Every ${p.everyN} clicks ×${p.mult}`;
     case 'MOOD_SWING': return `Rotating buff`;
-    case 'SCALING_OVER_TIME': return `+${(p.apcPerMin * 100).toFixed(0)}%/min APC`;
+    case 'SCALING_OVER_TIME': return `+${(p.apcPerMin * 100).toFixed(0)}%/min APC (max ${(p.capPct * 100).toFixed(0)}%)`;
     case 'FIELD_THEME': return `+${(p.mult * 100).toFixed(0)}% mult (Field)`;
     case 'INSTANT_BURST': return `Burst: ${fmt(p.apsSeconds)}s of APS`;
     case 'TEMP_CLICK_MULT': return `${p.mult}× clicks · ${p.duration}s`;
@@ -633,12 +632,10 @@ function getBinderStats() {
         addMult += p.globalMult || 0;      // Harold baseline +3%
         break;
       // CRIT_CHANCE is applied per click in doClick, so it adds nothing here.
-      case 'SCALING_OVER_TIME': {
-        if (!G.scalingStartTime) G.scalingStartTime = Date.now();
-        const minutes = (Date.now() - G.scalingStartTime) / 60000;
-        apcMultBonus += (p.apcPerMin || 0) * minutes;  // uncapped — no capPct
+      case 'SCALING_OVER_TIME':
+        // Expanding Brain: grows with minutes played while slotted (G.brainMinutes), capped
+        apcMultBonus += Math.min(p.capPct || 0, (p.apcPerMin || 0) * G.brainMinutes);
         break;
-      }
       case 'MOOD_SWING': {
         const mode = G.moodIndex % 3;
         if (mode === 0) apsMultBonus += p.moodAps || 0.15;
@@ -1222,7 +1219,15 @@ function doClick(cx, cy) {
   G.totalClicks++;
   const bs = getBinderStats();
   const fieldMult = getFieldMult();
-  let clickMult = G.clickMultValue;
+  // Overly Attached GF: only dead-center clicks get a centerOnly buff's share
+  let centreHit = false;
+  if (G.clickBuffs.some(b => b.centerOnly)) {
+    const r = $nuggetContainer.getBoundingClientRect();
+    const dist = Math.hypot(cx - (r.left + r.width / 2), cy - (r.top + r.height / 2));
+    centreHit = dist <= r.width * 0.15;
+    if (!centreHit) spawnParticle(cx, cy - 30, '😠 MISS');
+  }
+  let clickMult = clickBuffMult(centreHit);
   // CRIT_CHANCE: Chuck Norris — every Nth click multiplies value
   G.critClickCounter++;
   for (const cid of G.binderSlots) {
@@ -1233,38 +1238,45 @@ function doClick(cx, cy) {
       spawnParticle(cx, cy - 30, '💥 CRIT!');
     }
   }
-  // Overly Attached GF: off-center clicks during the PRECISION window get no bonus
-  let precisionHit = G.precisionTimer > 0;
-  if (precisionHit && G.precisionCenterOnly) {
-    const r = $nuggetContainer.getBoundingClientRect();
-    const dist = Math.hypot(cx - (r.left + r.width / 2), cy - (r.top + r.height / 2));
-    if (dist > r.width * 0.15) {
-      precisionHit = false;
-      clickMult /= G.clickMultValue;
-      spawnParticle(cx, cy - 30, '😠 MISS');
-    }
-  }
   // Arthur Fist: next click counts double
   if (G.doubleNextClick) {
     G.doubleNextClick = false;
     clickMult *= 2;
     spawnParticle(cx, cy - 50, '👊 x2');
   }
-  let earned = (G.auraPerClick + bs.addApc) * (G.allAuraMult + bs.addMult + fieldMult) * clickMult;
+  clickMult = Math.min(BAL.CLICK_TOTAL_CAP, clickMult);
+  const clickBase = (G.auraPerClick + bs.addApc) * (G.allAuraMult + bs.addMult + fieldMult);
+  let earned = clickBase * clickMult;
   if (G.frenzyActive) earned *= 10;
   G.aura += earned;
-  spawnParticle(cx, cy, '+' + fmt(earned));
-  // Overly Attached GF: award Kek Koin per click during PRECISION window
-  if (precisionHit && G.kekPerHit > 0) {
-    G.kekCoins += G.kekPerHit;
-    G.totalKekEarned += G.kekPerHit;
-    updateCardShopUI();
+  // D6: buffs with easPerClick also pay a flat EAS bonus per click, up to capEAS per use
+  // (not multiplied by frenzy, crit, Arthur or echo)
+  let bonus = 0;
+  for (const b of G.clickBuffs) {
+    if (!(b.easPerClick > 0) || (b.centerOnly && !centreHit)) continue;
+    const e = Math.min(b.easPerClick, b.capEAS - b.paidEAS);
+    if (e > 0) { b.paidEAS += e; bonus += e * computeBaseEAS(); }
   }
-  // Distracted Boyfriend echo: ghost click offset to the side
-  if (G.echoTimer > 0) {
-    const echoX = cx + G.echoOffset;
-    spawnParticle(echoX, cy, '+' + fmt(earned));
-    G.aura += earned;
+  G.aura += bonus;
+  spawnParticle(cx, cy, '+' + fmt(earned + bonus));
+  // Overly Attached GF: every Nth center click drops a Kek Koin, up to kekCap per use
+  if (centreHit) {
+    for (const b of G.clickBuffs) {
+      if (!b.centerOnly) continue;
+      b.hits++;
+      if (b.kekEveryNHits && b.hits % b.kekEveryNHits === 0 && b.kekPaid < b.kekCap) {
+        b.kekPaid++;
+        G.kekCoins += 1;
+        G.totalKekEarned += 1;
+        updateCardShopUI();
+      }
+    }
+  }
+  // Distracted Boyfriend echo: ghost click offset to the side (card cap, no frenzy)
+  if (hasEcho()) {
+    const echoEarned = clickBase * Math.min(clickMult, BAL.CLICK_MULT_CAP);
+    spawnParticle(cx + G.echoOffset, cy, '+' + fmt(echoEarned));
+    G.aura += echoEarned;
   }
   nuggetScale = 0.8;
   G.lastIdleClickTime = Date.now();
@@ -1384,7 +1396,7 @@ const EVENTS = [
   { name: 'Skibidi Toilet', emoji: '🚽', desc: 'Click to defeat!', isBoss: true },
   {
     name: 'Level 67 Gyatt', emoji: '😜', desc: '100x click power for 15s!',
-    reward: (g) => { g.clickMultValue = 100; g.clickMultTimer = 15; return 0; }
+    reward: () => { addClickBuff({ src: 'gyatt', mult: 100, t: 15, uncapped: true }); return 0; }
   },
   _TAX, _TAX, _TAX, // 3/5 = 60% chance Fanum Tax
 ];
@@ -1485,12 +1497,12 @@ function spawnEvent() {
 function updateUI() {
   const bs = getBinderStats();
   const fieldMult = getFieldMult();
-  const apsMult = (G.apsMultTimer > 0 ? G.apsMultValue : 1);
+  const apsMult = apsBuffMult();
   const effectiveMult = (G.allAuraMult + bs.addMult + fieldMult) * (G.frenzyActive ? 10 : 1);
   const effectiveApc = G.auraPerClick + bs.addApc;
   const effectiveAps = (G.auraPerSecond + bs.addAps) * apsMult;
   $auraAmt.textContent = fmt(G.aura);
-  $auraStats.textContent = `+${fmt(effectiveApc * effectiveMult * G.clickMultValue)}/click | +${fmt(effectiveAps * effectiveMult)}/sec | ${effectiveMult.toFixed(1)}x mult`;
+  $auraStats.textContent = `+${fmt(effectiveApc * effectiveMult * clickBuffMult(true))}/click | +${fmt(effectiveAps * effectiveMult)}/sec | ${effectiveMult.toFixed(1)}x mult`;
   if ($kekAmt) $kekAmt.textContent = G.kekCoins;
 }
 
@@ -1558,10 +1570,12 @@ function gameLoop() {
 
   const bs = getBinderStats();
   const fieldMult = getFieldMult();
-  const apsMult = (G.apsMultTimer > 0 ? G.apsMultValue : 1);
+  const apsMult = apsBuffMult();
   const effectiveMult = (G.allAuraMult + bs.addMult + fieldMult) * (G.frenzyActive ? 10 : 1);
   const effectiveAps = (G.auraPerSecond + bs.addAps) * apsMult;
   G.aura += effectiveAps * effectiveMult * dt;
+  // Expanding Brain: only minutes played with it slotted count (hidden tabs are skipped above)
+  if (G.binderSlots.includes('bi_u6')) G.brainMinutes += dt / 60;
 
   // MOOD_SWING timer
   G.moodTimer += dt;
@@ -1574,29 +1588,20 @@ function gameLoop() {
   if (G.frenzyCooldown > 0) G.frenzyCooldown -= dt;
   checkFrenzy();
 
-  if (G.clickMultTimer > 0) {
-    G.clickMultTimer -= dt;
-    if (G.clickMultTimer <= 0) {
-      G.clickMultValue = 1;
-      log('⏱️ <span>Click boost expired!</span>');
-    }
-  }
-  if (G.precisionTimer > 0) {
-    G.precisionTimer -= dt;
-    if (G.precisionTimer <= 0) {
-      G.kekPerHit = 0;
-      G.precisionCenterOnly = false;
-    }
-  }
+  // Click and APS buffs: each entry runs its own timer
+  G.clickBuffs = G.clickBuffs.filter(b => {
+    b.t -= dt;
+    if (b.t > 0) return true;
+    log(`⏱️ <span>${buffName(b.src)} click boost expired!</span>`);
+    return false;
+  });
+  G.apsBuffs = G.apsBuffs.filter(b => {
+    b.t -= dt;
+    if (b.t > 0) return true;
+    log(`⏱️ <span>${buffName(b.src)} APS boost expired!</span>`);
+    return false;
+  });
   if (G.bossPauseTimer > 0) G.bossPauseTimer -= dt;
-  if (G.apsMultTimer > 0) {
-    G.apsMultTimer -= dt;
-    if (G.apsMultTimer <= 0) {
-      G.apsMultValue = 1;
-      log('⏱️ <span>APS boost expired!</span>');
-    }
-  }
-  if (G.echoTimer > 0) G.echoTimer -= dt;
   eventCooldown -= dt;
   if (eventCooldown <= 0) {
     spawnEvent();
@@ -1627,7 +1632,7 @@ function gameLoop() {
           // Philosoraptor: hoverable drop that awards Kek Koins instead of Aura
           spawnBurnKekCoin(card.params.kekValue, card.emoji, true);
         } else if (card.params.autoCollect && !sigmaActive) {
-          const amt = computeEAS() * valueEAS;
+          const amt = computeBaseEAS() * valueEAS;
           G.aura += amt;
           spawnParticle(60 + Math.random() * 100, 60 + Math.random() * 60, '+' + fmt(amt));
         } else {
@@ -1647,7 +1652,7 @@ function gameLoop() {
     if (idleSec > idleThreshold) {
       // Extra APS income on top of the base tick already applied above
       const idleMult = (card.params.idleApsMult || 1.5) - 1;  // additive bonus above the 1× already ticked
-      const apsMult = (G.apsMultTimer > 0 ? G.apsMultValue : 1);
+      const apsMult = apsBuffMult();
       const idleExtra = (G.auraPerSecond + bs.addAps) * apsMult * effectiveMult * idleMult * dt;
       G.aura += idleExtra;
     }
@@ -1737,23 +1742,51 @@ const $burnPreview = document.getElementById('burn-preview');
 const $burnFx = document.getElementById('burn-fx');
 
 // Compute one "EAS" (Effective APS-Second) at the current moment.
+// Only the passive tick may read temp APS mults (Rule 0.1): this is for the live ticker and UI.
 function computeEAS() {
   const bs = getBinderStats();
   const fieldMult = getFieldMult();
-  const aps = (G.auraPerSecond + bs.addAps) * (G.apsMultTimer > 0 ? G.apsMultValue : 1);
+  const aps = (G.auraPerSecond + bs.addAps) * apsBuffMult();
   const mult = (G.allAuraMult + bs.addMult + fieldMult);
   return Math.max(1, aps * mult);   // floor at 1 so early game still pays out
 }
 
 // Base EAS — excludes temporary APS multipliers (Rickroll etc).
-// Used by INSTANT_BURST and GAMBLE so burst payouts can't be amplified by temp buffs.
+// Every one-shot payout (bursts, coins, targets, gags, drops, boss reward) reads this one.
 function computeBaseEAS() {
   const bs = getBinderStats();
   const fieldMult = getFieldMult();
-  const aps = (G.auraPerSecond + bs.addAps);   // no apsMultTimer
+  const aps = (G.auraPerSecond + bs.addAps);   // no temp APS buffs
   const mult = (G.allAuraMult + bs.addMult + fieldMult);
   return Math.max(1, aps * mult);
 }
+
+// --- Buff lists (G.clickBuffs / G.apsBuffs) ---
+// Buffs stack additively (1 + Σ(mult − 1)), each with its own timer, so no card can
+// extend or downgrade another and each pays its own value.
+function addClickBuff(b) {
+  G.clickBuffs.push(Object.assign({ mult: 1, t: 10, uncapped: false, centerOnly: false, echo: false,
+    easPerClick: 0, capEAS: 0, paidEAS: 0, kekEveryNHits: 0, kekCap: 0, kekPaid: 0, hits: 0 }, b));
+}
+function addApsBuff(b) { G.apsBuffs.push({ src: b.src, mult: b.mult || 1, t: b.t || 10 }); }
+// Card buffs are capped at CLICK_MULT_CAP; uncapped entries (Level 67 Gyatt) add on top.
+// centerOnly entries (Overly Attached GF) only count on a dead-center hit.
+function clickBuffMult(centreHit) {
+  let card = 0, uncapped = 0;
+  for (const b of G.clickBuffs) {
+    if (b.centerOnly && !centreHit) continue;
+    if (b.uncapped) uncapped += b.mult - 1;
+    else card += b.mult - 1;
+  }
+  return 1 + Math.min(BAL.CLICK_MULT_CAP - 1, card) + uncapped;
+}
+function apsBuffMult() {
+  let sum = 0;
+  for (const b of G.apsBuffs) sum += b.mult - 1;
+  return 1 + Math.min(BAL.APS_MULT_CAP - 1, sum);
+}
+function hasEcho() { return G.clickBuffs.some(b => b.echo); }
+function buffName(src) { return src === 'gyatt' ? 'Level 67 Gyatt' : (CARD_BY_ID.get(src)?.name || 'Boost'); }
 
 function showBurnToast(text) {
   const t = document.createElement('div');
@@ -1783,8 +1816,12 @@ function renderBurnBar() {
     // transform-origin below card creates natural fan arc; no extra arcY needed
     wrap.style.cssText = `transform:rotate(${rot}deg);transform-origin:50% 120%;`;
     const hasMulti = card.params && card.params.multiKekBonus && cnt > 1;
+    const m = Math.min(cnt, BAL.MULTI_COPY_CAP);   // "Use All" consumes at most MULTI_COPY_CAP copies
+    const multiTip = card.archetype === 'KEK_DOUBLE_BUFF' ? `+${(card.params.doubleCount || 5) * m} doubles`
+      : card.archetype === 'COIN_RAIN' ? `${m}× Kek per bone`
+      : `${Math.pow(2, m) - 1}× power`;
     const useAllBtn = hasMulti
-      ? `<button class="burn-use-all-btn" title="Use all ${cnt} copies for ${Math.pow(2, cnt) - 1}× power!">🔥 ALL (${cnt})</button>`
+      ? `<button class="burn-use-all-btn" title="Use ${m} copies at once: ${multiTip}!">🔥 ×${m}</button>`
       : '';
     wrap.innerHTML = `<div class="burn-card-vis">${buildCardFaceHTML(card)}<span class="bcnt">×${cnt}</span>${useAllBtn}</div>`;
     wrap.title = `${card.name} — ${card.desc}`;
@@ -1900,16 +1937,13 @@ const EFFECT_HANDLERS = {
     }
   },
   TEMP_CLICK_MULT(card, p) {
-    // Stacks up to the cap, but never lowers a bigger boost that's already running (e.g. Level 67 Gyatt's 100×)
-    const cur = G.clickMultValue || 1;
-    G.clickMultValue = Math.max(cur, Math.min(BAL.CLICK_MULT_CAP, cur * (p.mult || 1)));
-    G.clickMultTimer = Math.max(G.clickMultTimer, p.duration || 10);
+    // Own entry and timer; stacks additively with other click buffs (see clickBuffMult)
+    addClickBuff({ src: card.id, mult: p.mult || 1, t: p.duration || 10, easPerClick: p.easPerClick || 0, capEAS: p.capEAS || 0 });
   },
   TEMP_APS_MULT(card, p) {
-    G.apsMultValue = p.mult || 1;
-    G.apsMultTimer = p.duration || 10;
+    addApsBuff({ src: card.id, mult: p.mult || 1, t: p.duration || 10 });
     // Have You Ever Had A Dream: freeze the Skibidi drain for the same window
-    if (p.pauseBoss) G.bossPauseTimer = p.duration || 10;
+    if (p.pauseBoss) G.bossPauseTimer = Math.max(G.bossPauseTimer, p.duration || 10);
   },
   COIN_RAIN(card, p) {
     const total = p.coins || 10;
@@ -1917,7 +1951,7 @@ const EFFECT_HANDLERS = {
     const motion = p.motion || 'fall';
     const ival = (dur * 1000) / total;
 
-    // Gabe the Dog bones: track all-caught to award APC buff instead of aura
+    // Gabe the Dog bones: every caught bone is worth kekPerBone (× copies from "Use All")
     if (motion === 'bones') {
       let caught = 0;
       const spawnBone = (i) => {
@@ -1934,28 +1968,23 @@ const EFFECT_HANDLERS = {
           const rect = el.getBoundingClientRect();
           spawnParticle(rect.left, rect.top, '🦴');
           setTimeout(() => el.remove(), 300);
-          if (caught >= total) {
-            if (p.kekReward) {
-              const kek = p.kekReward;
-              G.kekCoins += kek;
-              G.totalKekEarned += kek;
-              showBurnToast(`BORK! +${kek} Kek Koins!`);
-              log(`🐕 Gabe all bones caught: +${kek} Kek Koins!`);
-              updateUI(); updateCardShopUI();
-            } else {
-              const buffPct = p.rewardApcBuff || 0.15;
-              const buffSec = p.buffDuration || 30;
-              G.clickMultValue = Math.min(BAL.CLICK_MULT_CAP, G.clickMultValue * (1 + buffPct));
-              G.clickMultTimer = buffSec;
-              showBurnToast(`BORK! +${(buffPct * 100).toFixed(0)}% click power for ${buffSec}s!`);
-            }
-          }
         };
         $burnFx.appendChild(el);
         $burnFx.style.display = 'block';
         setTimeout(() => { if (el.parentNode) el.remove(); }, dur * 1000 + 500);
       };
       for (let i = 0; i < total; i++) setTimeout(() => spawnBone(i), i * ival);
+      // Pay once when the wave ends (after the last bone's own lifetime)
+      setTimeout(() => {
+        const kek = Math.round(caught * (p.kekPerBone || 0) * (p._copies || 1));
+        if (kek > 0) {
+          G.kekCoins += kek;
+          G.totalKekEarned += kek;
+          updateUI(); updateCardShopUI();
+        }
+        showBurnToast(`BORK! ${caught}/${total} bones: +${kek} Kek Koins!`);
+        log(`🐕 Gabe: ${caught}/${total} bones caught — +${kek} Kek Koins!`);
+      }, (total - 1) * ival + dur * 1000 + 600);
       return;
     }
 
@@ -1982,7 +2011,7 @@ const EFFECT_HANDLERS = {
         el.onclick = () => {
           if (el.classList.contains('collected')) return;
           el.classList.add('collected');
-          const amt = computeEAS() * (p.valueEASEach || 7.5);
+          const amt = computeBaseEAS() * (p.valueEASEach || 7.5);
           G.aura += amt;
           const rect = el.getBoundingClientRect();
           spawnParticle(rect.left, rect.top, '+' + fmt(amt));
@@ -2010,7 +2039,7 @@ const EFFECT_HANDLERS = {
           el.onclick = () => {
             if (el.classList.contains('collected')) return;
             el.classList.add('collected');
-            const amt = computeEAS() * (p.valueEASEach || 4.5);
+            const amt = computeBaseEAS() * (p.valueEASEach || 4.5);
             G.aura += amt;
             const rect = el.getBoundingClientRect();
             spawnParticle(rect.left, rect.top, '+' + fmt(amt));
@@ -2038,7 +2067,7 @@ const EFFECT_HANDLERS = {
         el.onclick = () => {
           if (el.classList.contains('collected')) return;
           el.classList.add('collected');
-          const amt = computeEAS() * (p.valueEASEach || 5.6);
+          const amt = computeBaseEAS() * (p.valueEASEach || 5.6);
           G.aura += amt;
           const rect = el.getBoundingClientRect();
           spawnParticle(rect.left, rect.top, '+' + fmt(amt));
@@ -2065,7 +2094,7 @@ const EFFECT_HANDLERS = {
           el.onclick = () => {
             if (el.classList.contains('collected')) return;
             el.classList.add('collected');
-            const amt = computeEAS() * (p.valueEASEach || 12);
+            const amt = computeBaseEAS() * (p.valueEASEach || 12);
             G.aura += amt;
             const rect = el.getBoundingClientRect();
             spawnParticle(rect.left, rect.top, '+' + fmt(amt));
@@ -2114,9 +2143,9 @@ const EFFECT_HANDLERS = {
     }
     // Distracted Boyfriend: echo-click mode
     if (p.echoClick) {
-      G.echoTimer = p.echoDuration || 8;
+      addClickBuff({ src: card.id, mult: 1, t: p.echoDuration || 8, echo: true, easPerClick: p.easPerClick || 0, capEAS: p.capEAS || 0 });
       G.echoOffset = p.echoOffset || 150;
-      log(`👀 Echo clicks active for ${G.echoTimer}s!`);
+      log(`👀 Echo clicks active for ${p.echoDuration || 8}s!`);
       return;
     }
     // Spiderman Pointing: scoop up any settled/settling Kek Koins first
@@ -2132,6 +2161,7 @@ const EFFECT_HANDLERS = {
     const dur = (p.duration || 3) * 1000;
     const ival = dur / clicks;
     const cx = window.innerWidth / 2, cy = window.innerHeight / 2;
+    let paid = 0;   // D6 EAS paid by this activation's auto-clicks (capped at capEAS)
     // Disaster Girl: animate fire sweep across screen
     if (p.sweep) {
       const sweep = document.createElement('div');
@@ -2146,6 +2176,8 @@ const EFFECT_HANDLERS = {
         const fieldMult = getFieldMult();
         const earned = (G.auraPerClick + bs.addApc) * (G.allAuraMult + bs.addMult + fieldMult) * (p.mult || 1);
         G.aura += earned;
+        const e = Math.min(p.easPerClick || 0, (p.capEAS || 0) - paid);
+        if (e > 0) { paid += e; G.aura += e * computeBaseEAS(); }
         spawnParticle(cx + (Math.random() - 0.5) * 200, cy + (Math.random() - 0.5) * 200, '+' + fmt(earned));
         // Vitas: each auto-click also registers as a boss hit even when boss is blocking
         if (p.piercesBoss && G.boss && G.boss.active) {
@@ -2171,11 +2203,9 @@ const EFFECT_HANDLERS = {
   },
   PRECISION(card, p) {
     const dur = p.duration || 10;
-    G.clickMultValue = Math.max(G.clickMultValue, Math.min(BAL.CLICK_MULT_CAP, p.mult || 1));
-    G.clickMultTimer = Math.max(G.clickMultTimer, dur);
-    G.precisionTimer = dur;
-    G.kekPerHit = p.kekPerHit || 0;
-    G.precisionCenterOnly = !!p.deadCenterOnly;
+    // Own buff entry: another PRECISION card can't end or overwrite this window
+    addClickBuff({ src: card.id, mult: p.mult || 1, t: dur, centerOnly: !!p.deadCenterOnly,
+      easPerClick: p.easPerClick || 0, capEAS: p.capEAS || 0, kekEveryNHits: p.kekEveryNHits || 0, kekCap: p.kekCap || 0 });
     if (p.smallNugget || p.invisibleNugget) {
       const $c = document.getElementById('nugget-container');
       const orig = $c.style.transform;
@@ -2190,7 +2220,7 @@ const EFFECT_HANDLERS = {
     }
   },
   SCREEN_GAG(card, p) {
-    const amt = computeEAS() * (p.pityEAS || 30);
+    const amt = computeBaseEAS() * (p.pityEAS || 30);
     if (p.fakeError) {
       const div = document.createElement('div');
       div.style.cssText = 'position:fixed;top:30%;left:50%;transform:translateX(-50%);background:#fff;color:#000;border:2px solid #000;padding:16px 24px;z-index:700;font-family:monospace;cursor:pointer;box-shadow:4px 4px 0 rgba(0,0,0,0.5);';
@@ -2233,17 +2263,17 @@ const EFFECT_HANDLERS = {
   },
 };
 
-// Consume all copies of a multi-copy eligible burn card for exponential reward.
-// Multi-copy scale: multiplier = 2^N - 1  (1→1×, 2→3×, 3→7×, 4→15×)
+// Consume up to MULTI_COPY_CAP copies of a multi-copy eligible burn card at once.
+// KEK_SPAWN / INSTANT_BURST scale: multiplier = 2^N - 1  (1→1×, 2→3×, 3→7× max)
 function activateBurnMulti(cardId) {
   const card = CARD_BY_ID.get(cardId);
   if (!card || card.type !== 'Burn') return;
   if (!card.params || !card.params.multiKekBonus) return;
-  const n = G.collection[cardId] || 0;
+  const n = Math.min(G.collection[cardId] || 0, BAL.MULTI_COPY_CAP);
   if (n < 2) { activateBurn(cardId); return; }
   const now = Date.now();
   if (now < G.burnCooldownUntil) { log('⏳ Burn cooldown — wait a moment.'); return; }
-  G.collection[cardId] = 0;
+  G.collection[cardId] -= n;
   G.burnCooldownUntil = now + BAL.BURN_GLOBAL_COOLDOWN_MS;
   const multiplier = Math.pow(2, n) - 1;
   const p = card.params;
@@ -2256,13 +2286,9 @@ function activateBurnMulti(cardId) {
   } else if (card.archetype === 'KEK_DOUBLE_BUFF') {
     G.kekDoubleCount += (p.doubleCount || 5) * n;
     log(`🪙 Next ${G.kekDoubleCount} Kek Koins are worth 2×!`);
-  } else if (card.archetype === 'COIN_RAIN' && p.kekReward) {
-    // Gabe the Dog multi-copy: each "all-caught" wave awards kekReward
-    const totalKek = (p.kekReward || 10) * n;
-    G.kekCoins += totalKek;
-    G.totalKekEarned += totalKek;
-    spawnParticle(window.innerWidth / 2, window.innerHeight / 2, `+${totalKek} 👑`);
-    log(`🐕 Gabe × ${n}: +${totalKek} Kek Koins!`);
+  } else if (card.archetype === 'COIN_RAIN') {
+    // Gabe the Dog multi-copy: one bone run, every bone pays × n
+    EFFECT_HANDLERS.COIN_RAIN(card, { ...p, _copies: n });
   } else if (card.archetype === 'INSTANT_BURST') {
     // El Risitas: exponential Aura burst
     const amt = computeBaseEAS() * (p.apsSeconds || 600) * multiplier;
@@ -2657,7 +2683,7 @@ function spawnBurnCoin(valueEAS, emoji, requireHover) {
   const collect = () => {
     if (coin.classList.contains('collected')) return;
     coin.classList.add('collected');
-    const amt = computeEAS() * valueEAS;
+    const amt = computeBaseEAS() * valueEAS;
     G.aura += amt;
     const rect = coin.getBoundingClientRect();
     spawnParticle(rect.left, rect.top, '+' + fmt(amt));
@@ -2677,7 +2703,7 @@ function spawnBurnTarget(card, p) {
   let remaining = p.targets || 1;
   let hp = p.hp || 1;
   const timeoutMs = (p.timeout || 5) * 1000;
-  const reward = p.kekReward ? 0 : computeEAS() * (p.rewardEAS || p.reward || 60);
+  const reward = p.kekReward ? 0 : computeBaseEAS() * (p.rewardEAS || p.reward || 60);
   // moving:true (Leave Britney) wanders faster; all others drift slowly
   const speed = p.moving ? 8 : 3;
   const spawnOne = () => {
@@ -2953,7 +2979,7 @@ function endBossFight(victory) {
   G.boss.active = false;
   $bossOverlay.classList.remove('active');
   if (victory) {
-    const reward = computeEAS() * BAL.BOSS_REWARD_SECONDS;
+    const reward = computeBaseEAS() * BAL.BOSS_REWARD_SECONDS;
     G.aura += reward;
     showBurnToast('SKIBIDI DEFEATED!');
     log(`🏆 <span>Skibidi defeated!</span> +${fmt(reward)} aura.`);
@@ -3028,7 +3054,7 @@ function saveGame() {
     collection: G.collection,
     binderSlots: G.binderSlots,
     fieldSlot: G.fieldSlot,
-    scalingStartTime: G.scalingStartTime,
+    brainMinutes: G.brainMinutes,
     kekCoins: G.kekCoins,
     clicksSinceLastKek: G.clicksSinceLastKek,
     totalKekEarned: G.totalKekEarned,
@@ -3070,7 +3096,9 @@ function loadGame() {
       }
     }
     if (d.fieldSlot && validIds.has(d.fieldSlot)) G.fieldSlot = d.fieldSlot;
-    if (d.scalingStartTime) G.scalingStartTime = d.scalingStartTime;
+    if (d.brainMinutes !== undefined) G.brainMinutes = d.brainMinutes;
+    // Migration: old saves stored a wall-clock start time; count it as at most 30 minutes
+    else if (d.scalingStartTime) G.brainMinutes = Math.min(30, (Date.now() - d.scalingStartTime) / 60000);
     if (d.kekCoins !== undefined) G.kekCoins = d.kekCoins;
     if (d.clicksSinceLastKek !== undefined) G.clicksSinceLastKek = d.clicksSinceLastKek;
     if (d.totalKekEarned !== undefined) G.totalKekEarned = d.totalKekEarned;

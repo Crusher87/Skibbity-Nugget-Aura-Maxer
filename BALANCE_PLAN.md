@@ -353,6 +353,7 @@ Differentiation axis: **click pattern** (rapid discrete / echo-mirror / boss-pie
 ### Phase 5 — Implementation
 - [x] Economy refactor (computeBaseEAS added; INSTANT_BURST + GAMBLE handlers fixed)
 - [ ] Per-batch implementation (new params need rendering logic)
+  - [x] B1 — exploits + one buff list (D1 multi-copy cap, D2 Brain, OAG Kek cap, additive buffs, D6 mechanism, base EAS everywhere): [docs/balance/B1.md](docs/balance/B1.md)
 - [ ] Pack pull validation
 
 ### Phase 6 — Playtest

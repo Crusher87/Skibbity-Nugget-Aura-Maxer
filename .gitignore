@@ -2,3 +2,6 @@
 Thumbs.db
 .DS_Store
 desktop.ini
+
+# smoke-test.mjs downloads three@0.128.0 here
+tools/.cache/
