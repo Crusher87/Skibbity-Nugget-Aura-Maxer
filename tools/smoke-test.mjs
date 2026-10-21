@@ -98,9 +98,19 @@ async function openPage(browser, { keepStorage = null, render = false } = {}) {
   page.on('response', r => { if (r.status() >= 400) errs.push(`http ${r.status()} ${decodeURIComponent(r.url().replace(BASE, ''))}`); });
   await page.goto(BASE + '/index.html', { waitUntil: 'load' });
   await page.waitForFunction(() => typeof G !== 'undefined' && typeof activateBurn === 'function', null, { timeout: 20000 });
-  await page.waitForFunction(() => nuggetModel && kekCoinTemplate, null, { timeout: 60000 }).catch(() => errs.push('models did not load'));
+  await waitModels(page, errs);
   if (!render) await skipWebGL(page);
   return { ctx, page, errs };
+}
+// All three GLBs, so a later reload can't abort a model fetch mid-flight (a false console error)
+async function waitModels(page, errs) {
+  await page.waitForFunction(() => nuggetModel && kekCoinTemplate && packModel, null, { timeout: 60000 }).catch(() => errs.push('models did not load'));
+}
+async function reloadPage(page, errs) {
+  await page.reload({ waitUntil: 'load' });
+  await page.waitForFunction(() => typeof G !== 'undefined' && typeof activateBurn === 'function');
+  await waitModels(page, errs);
+  await skipWebGL(page);
 }
 // See header: keep logic + raycasts, skip the (very slow under SwiftShader) WebGL draw.
 async function skipWebGL(page) {
@@ -190,8 +200,7 @@ async function commonPass(browser) {
   check('binders slot', slotted.every(Boolean), slotted.join(','));
   // Save + reload
   const saved = await page.evaluate(() => { saveGame(); return { coll: JSON.stringify(G.collection), slots: G.binderSlots.join(','), kek: G.kekCoins }; });
-  await page.reload({ waitUntil: 'load' });
-  await page.waitForFunction(() => typeof G !== 'undefined' && typeof activateBurn === 'function');
+  await reloadPage(page, errs);
   const loaded = await page.evaluate(() => ({ coll: JSON.stringify(G.collection), slots: G.binderSlots.join(','), kek: G.kekCoins }));
   check('save + reload restores collection, binder and Kek', loaded.coll === saved.coll && loaded.slots === saved.slots && loaded.kek === saved.kek);
   await sleep(1500);
@@ -339,12 +348,167 @@ const BATCH_TESTS = {
       _wipingSave = true;
       localStorage.setItem(SAVE_KEY, JSON.stringify(s));
     });
-    await page.reload({ waitUntil: 'load' });
-    await page.waitForFunction(() => typeof G !== 'undefined' && typeof activateBurn === 'function');
+    await reloadPage(page, errs);
     r = await page.evaluate(() => G.brainMinutes);
     check('B1 Brain migration: old scalingStartTime → ≤ 30 min', r > 29.9 && r <= 30.5, String(r));
     await sleep(500);
     check('B1: no page/console errors', errs.length === 0, errs.slice(0, 8).join(' | '));
+    await ctx.close();
+  },
+
+  async B2(browser) {
+    let { ctx, page, errs } = await openPage(browser);
+    await midState(page);
+    const use = (ids) => page.evaluate((ids) => { for (const id of ids) { devGiveCard(id); G.burnCooldownUntil = 0; activateBurn(id); } }, ids);
+    const nug = () => page.evaluate(() => ({ t: $nuggetContainer.style.transform, o: $nuggetContainer.style.opacity, fx: JSON.stringify(G.nuggetFx), cls: document.body.className, filter: getComputedStyle(document.body).filter }));
+
+    let r = await nug();
+    check('B2 idle: body has no filter', r.filter === 'none', r.filter);
+
+    // Dentist ×2 within 6 s: first ending doesn't shrink the nugget / clear the blur early
+    await use(['bu_c16']);
+    await sleep(2000);
+    await use(['bu_c16']);
+    await sleep(4600);
+    r = await nug();
+    check('B2 Dentist ×2: after the first ends, nugget still big + blurred', r.t.includes('scale(1.4)') && r.cls.includes('fx-blur'), JSON.stringify(r));
+    await sleep(2200);
+    r = await nug();
+    check('B2 Dentist ×2: both ended → nugget normal, no blur', r.t.includes('scale(1)') && !r.cls.includes('fx-blur') && r.filter === 'none', JSON.stringify(r));
+
+    // Surgery → Cena → Dentist, then all end
+    await use(['bu_u6']);
+    await sleep(300);
+    await use(['bu_r1']);
+    await sleep(300);
+    await use(['bu_c16']);
+    r = await nug();
+    const during = r;
+    await sleep(15800);
+    r = await nug();
+    check('B2 Surgery → Cena → Dentist: shrunk + invisible during, restored after all end', during.t.includes('scale(0.35)') && during.o === '0.05' && r.t.includes('scale(1)') && r.o === '', JSON.stringify({ during, after: r }));
+    await page.evaluate(() => { G.clickBuffs = []; });
+
+    // Big Chungus scale (+ hitbox during Surgery)
+    r = await page.evaluate(() => { _binderSelectedSlot = 0; devGiveCard('bi_u3'); equipCard('bi_u3'); const a = $nuggetContainer.style.transform; unequipSlot(0); return [a, $nuggetContainer.style.transform]; });
+    check('B2 Big Chungus: nugget 1.5× while slotted, 1× after', r[0].includes('scale(1.5)') && r[1].includes('scale(1)'), r.join(' → '));
+
+    // Leroy + Ugandan together: Leroy's timeout doesn't remove Ugandan's targets
+    await use(['bu_u3']);
+    await sleep(200);
+    await use(['bu_r3']);
+    await sleep(3400);
+    r = await page.evaluate(() => [...document.querySelectorAll('#burn-fx .burn-target')].map(t => t.textContent));
+    check('B2 Leroy + Ugandan: Ugandan targets survive Leroy\'s timeout', r.includes('🔴') && !r.includes('🛡️'), r.join(''));
+    r = await page.evaluate(async () => {
+      const a0 = G.aura, base = computeBaseEAS();
+      for (let i = 0; i < 12; i++) { document.querySelectorAll('#burn-fx .burn-target').forEach(t => t.click()); await new Promise(res => setTimeout(res, 30)); }
+      return (G.aura - a0) / base;
+    });
+    check('B2 Ugandan still pays after Leroy timed out', r > 170, r.toFixed(1));
+
+    // Moth: swap fields mid-blackout
+    r = await page.evaluate(() => {
+      _binderSelectedSlot = 'field'; devGiveCard('f4'); devGiveCard('f1'); equipCard('f4');
+      _mothBlackoutStart(5);
+      equipCard('f1');
+      return { active: _mothBlackoutActive, op: document.getElementById('moth-blackout').style.opacity, acc: _mothBlackoutAccum };
+    });
+    check('B2 Moth: swapping fields mid-blackout clears it', !r.active && r.op === '0' && r.acc === 0, JSON.stringify(r));
+
+    // Sigma Slam + Spiderman: card kept; Boyfriend echo still allowed
+    r = await page.evaluate(() => {
+      _binderSelectedSlot = 'field'; devGiveCard('f2'); equipCard('f2');
+      devGiveCard('bu_c3'); const n0 = G.collection.bu_c3; G.burnCooldownUntil = 0; activateBurn('bu_c3');
+      devGiveCard('bu_c4'); const b0 = G.collection.bu_c4; G.burnCooldownUntil = 0; activateBurn('bu_c4');
+      const out = { spider: G.collection.bu_c3 === n0, boyfriend: G.collection.bu_c4 === b0 - 1, echo: hasEcho(), blockedCls: !!document.querySelector('.burn-card-wrap.blocked') };
+      unequipFieldSlot(); G.clickBuffs = [];
+      return out;
+    });
+    check('B2 Sigma + Spiderman: card kept (shown blocked); Boyfriend echo allowed', r.spider && r.boyfriend && r.echo && r.blockedCls, JSON.stringify(r));
+
+    // 38 Burn types: sorted by rarity, paged, every card reachable
+    r = await page.evaluate(() => {
+      CARD_LIBRARY.filter(c => c.type === 'Burn').forEach(c => { G.collection[c.id] = 2; });
+      G.burnBarPage = 0; renderBurnBar();
+      const seen = [], firstPage = [];
+      for (let pg = 0; pg < 10; pg++) {
+        const names = [...$burnBarItems.querySelectorAll('.burn-card-wrap')].map(w => w.title.split(' — ')[0]);
+        if (pg === 0) firstPage.push(...names);
+        seen.push(...names);
+        const next = [...$burnBarItems.querySelectorAll('.burn-page-btn')].pop();
+        if (!next || next.disabled) break;
+        next.click();
+      }
+      const rares = CARD_LIBRARY.filter(c => c.type === 'Burn' && c.rarity === 'rare').map(c => c.name);
+      return { n: new Set(seen).size, page: G.burnBarPage, rareFirst: rares.every((nm, i) => firstPage[i] === nm), last: seen[seen.length - 1] };
+    });
+    check('B2 burn bar: 38 types reachable over pages, rares first', r.n === 38 && r.page === 3 && r.rareFirst && r.last === 'All Your Base', JSON.stringify(r));
+
+    // Boss: burn bar sits above the overlay; Dream and Vitas castable by a real click; SWK blocked
+    await page.evaluate(() => { G.burnBarPage = 0; for (const id of Object.keys(G.collection)) if (CARD_BY_ID.get(id).type === 'Burn') G.collection[id] = 0; G.collection.bu_c9 = 1; G.collection.bu_c12 = 1; G.collection.bu_c11 = 1; G.burnCooldownUntil = 0; startBossFight(); });
+    // A point where this card (not an overlapping neighbour) is the top element
+    const box = async (name) => page.evaluate((name) => {
+      const w = [...document.querySelectorAll('.burn-card-wrap')].find(w => w.title.startsWith(name)); const r = w.getBoundingClientRect();
+      for (let fy = 0.1; fy < 0.9; fy += 0.1) for (let fx = 0.1; fx < 0.9; fx += 0.1) {
+        const x = r.left + r.width * fx, y = r.top + r.height * fy;
+        if (document.elementFromPoint(x, y)?.closest('.burn-card-wrap') === w) return { x, y };
+      }
+      return { x: r.left + 5, y: r.top + 5 };
+    }, name);
+    r = await page.evaluate(async () => { const w = [...document.querySelectorAll('.burn-card-wrap')][0]; const b = w.getBoundingClientRect(); const el = document.elementFromPoint(b.left + b.width / 2, b.top + 10); return !!el.closest('#burn-bar'); });
+    check('B2 boss: burn bar is on top of the boss overlay', r);
+    let b = await box('Have You Ever Had A Dream');
+    await page.mouse.move(b.x, b.y); await page.mouse.click(b.x, b.y);
+    await page.evaluate(() => { G.burnCooldownUntil = 0; });
+    b = await box('Vitas');
+    await page.mouse.move(b.x, b.y); await page.mouse.click(b.x, b.y);
+    await page.evaluate(() => { G.burnCooldownUntil = 0; });
+    b = await box('Star Wars Kid');
+    await page.mouse.move(b.x, b.y); await page.mouse.click(b.x, b.y);
+    await sleep(800);
+    r = await page.evaluate(() => ({ dream: G.collection.bu_c9, vitas: G.collection.bu_c12, swk: G.collection.bu_c11, frozen: G.bossPauseTimer > 0, hits: G.boss ? G.boss.defeatClicks.length : -1 }));
+    check('B2 boss: Dream and Vitas cast from the bar (freeze + pierce), SWK kept', r.dream === 0 && r.vitas === 0 && r.swk === 1 && r.frozen && r.hits > 0, JSON.stringify(r));
+    await page.evaluate(() => { if (G.boss) endBossFight(false); });
+
+    // GigaChad + Ohio is grey; AYB + Dentist overlap
+    r = await page.evaluate(() => {
+      _binderSelectedSlot = 0; devGiveCard('bi_r3'); equipCard('bi_r3'); updateBinderSlotsUI();
+      _binderSelectedSlot = 'field'; equipCard('f1');
+      return getComputedStyle(document.body).filter;
+    });
+    check('B2 GigaChad + Ohio: grayscale kept with the Field filter', r.includes('grayscale(1)') && r.includes('saturate'), r);
+    await use(['bu_c18']);
+    await sleep(2000);
+    await use(['bu_c16']);
+    await sleep(500);
+    const both = await page.evaluate(() => getComputedStyle(document.body).filter);
+    await sleep(3000);
+    r = await page.evaluate(() => getComputedStyle(document.body).filter);
+    check('B2 AYB + Dentist: both filters at once, AYB ends without clearing the blur', both.includes('sepia') && both.includes('blur') && !r.includes('sepia') && r.includes('blur') && r.includes('grayscale(1)'), `${both} → ${r}`);
+    await sleep(4000);
+    await page.evaluate(() => { unequipFieldSlot(); unequipSlot(0); updateBinderSlotsUI(); });
+
+    // awardKek fallback: models missing → Brian still pays 2
+    r = await page.evaluate(() => { const t = kekCoinTemplate; kekCoinTemplate = null; const k0 = G.kekCoins; devGiveCard('bu_c6'); G.burnCooldownUntil = 0; activateBurn('bu_c6'); return new Promise(res => setTimeout(() => { kekCoinTemplate = t; res(G.kekCoins - k0); }, 600)); });
+    check('B2 Kek coin fallback: Brian pays 2 without models', r === 2, String(r));
+
+    // Reload during the pack animation keeps the card
+    r = await page.evaluate(() => { G.kekCoins = 500; for (const k of Object.keys(G.collection)) G.collection[k] = 0; buyPack(); return { id: _pendingCard.id, n: G.collection[_pendingCard.id] }; });
+    await reloadPage(page, errs);
+    const after = await page.evaluate((id) => G.collection[id], r.id);
+    check('B2 reload mid-pack: card kept', r.n === 1 && after === 1, `${r.id}: ${r.n} → ${after}`);
+
+    // FWP after reload: idle bonus starts 5 s after load without a click
+    await page.evaluate(() => { _binderSelectedSlot = 0; devGiveCard('bi_c6'); equipCard('bi_c6'); G.auraPerSecond = 740; saveGame(); });
+    await reloadPage(page, errs);
+    r = await page.evaluate(() => (Date.now() - G.lastIdleClickTime) / 1000);
+    await sleep(6000);
+    const rate = await page.evaluate(() => new Promise(res => { eventCooldown = 1e9; const a0 = G.aura, t0 = performance.now(); setTimeout(() => res((G.aura - a0) / ((performance.now() - t0) / 1000) / computeBaseEAS()), 1000); }));
+    check('B2 FWP after reload: idle clock starts at load, 1.5× APS after 5 s', r < 5 && rate > 1.4 && rate < 1.6, `since load ${r.toFixed(1)}s, rate ${rate.toFixed(2)}× APS`);
+
+    await sleep(300);
+    check('B2: no page/console errors', errs.length === 0, errs.slice(0, 8).join(' | '));
     await ctx.close();
   },
 };

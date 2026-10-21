@@ -76,7 +76,9 @@ const G = {
   brainMinutes: 0,                     // Expanding Brain: minutes played with it slotted (saved)
   moodIndex: 0,                        // for Pepe MOOD_SWING
   moodTimer: 0,
-  lastIdleClickTime: 0,                // for IDLE_DRIP
+  lastIdleClickTime: Date.now(),       // for IDLE_DRIP (reset on load so idle time counts from load)
+  burnBarPage: 0,                      // burn bar page (not saved; clamped in renderBurnBar)
+  nuggetFx: { shrink: 0, grow: 0, invisible: 0 },  // active nugget size/visibility effects (counters, not saved)
   // Boss state
   boss: null,                          // {active, hp, drainAccumPct, defeatClicks:[], spawnedAt}
   gameState: 'main',
@@ -563,6 +565,7 @@ function switchTab(tab) {
   camera.lookAt(0, 0, 0);
   camera.updateProjectionMatrix();
   if (tab === 'cards') _playShopSound();
+  renderBurnBar();   // nugget-only burns are blocked off the sauces tab
 }
 
 // --- Card helpers (new schema) ---
@@ -602,7 +605,7 @@ function cardEffectLabel(card) {
 // Returns the *additions* to base APS/APC/Mult; caller applies on top of G base values.
 function getBinderStats() {
   let addAps = 0, addApc = 0, addMult = 0, apcMultBonus = 0, apsMultBonus = 0, costReduce = 0, drainMult = 1, hitboxBonus = false;
-  let kekIntervalReduce = 0, kekPackDiscount = 0, rareBonus = 0, mythicBonus = 0;
+  let kekIntervalReduce = 0, kekPackDiscount = 0, rareBonus = 0, mythicBonus = 0, bigNugget = 0;
   for (const cardId of G.binderSlots) {
     if (!cardId) continue;
     const card = CARD_BY_ID.get(cardId);
@@ -621,6 +624,7 @@ function getBinderStats() {
       case 'BIGGER_TARGET':
         apcMultBonus += p.apcBonus || 0;
         if (p.hitboxBonus) hitboxBonus = true;
+        bigNugget = p.scale || 1;   // Big Chungus: nugget scale (applyNuggetTransform)
         break;
       case 'COST_REDUCTION':
         costReduce = Math.max(costReduce, p.reduce || 0);
@@ -660,7 +664,37 @@ function getBinderStats() {
   // Add percentage bonuses on top of base stats
   addAps += G.auraPerSecond * apsMultBonus;
   addApc += G.auraPerClick * apcMultBonus;
-  return { addAps, addApc, addMult, costReduce, drainMult, apcMultBonus, apsMultBonus, hitboxBonus, kekIntervalReduce, kekPackDiscount, rareBonus, mythicBonus };
+  return { addAps, addApc, addMult, costReduce, drainMult, apcMultBonus, apsMultBonus, hitboxBonus, kekIntervalReduce, kekPackDiscount, rareBonus, mythicBonus, bigNugget };
+}
+
+// Nugget size / visibility from Big Chungus and the active burn effects (G.nuggetFx counters),
+// so overlapping effects (double Dentist, Surgery + Cena) always restore the right state.
+function applyNuggetTransform() {
+  const bs = getBinderStats();
+  const fx = G.nuggetFx;
+  const base = bs.bigNugget || 1;
+  const scale = fx.shrink > 0 ? (bs.hitboxBonus ? 0.55 : 0.35) : fx.grow > 0 ? base * 1.4 : base;
+  $nuggetContainer.style.transition = 'transform 0.3s, opacity 0.3s';
+  $nuggetContainer.style.transform = `translate(-50%,-50%) scale(${scale})`;
+  $nuggetContainer.style.opacity = fx.invisible > 0 ? '0.05' : '';
+}
+// Runs a nugget effect (G.nuggetFx[kind]) for ms.
+function nuggetFxFor(kind, ms) {
+  G.nuggetFx[kind]++;
+  applyNuggetTransform();
+  setTimeout(() => { G.nuggetFx[kind]--; applyNuggetTransform(); }, ms);
+}
+
+// Screen filters from burns (All Your Base retro, Dentist blur): body classes with counters,
+// so overlapping effects don't cut each other short. index.html composes body's filter
+// from per-source CSS variables (theme, GigaChad, burns).
+const _bodyFxCount = {};
+function bodyFxFor(cls, ms) {
+  _bodyFxCount[cls] = (_bodyFxCount[cls] || 0) + 1;
+  document.body.classList.add(cls);
+  setTimeout(() => {
+    if (--_bodyFxCount[cls] <= 0) document.body.classList.remove(cls);
+  }, ms);
 }
 
 // --- Field Slot Stats ---
@@ -700,6 +734,7 @@ function pullCard() {
 
 let _packCanDismiss = false;
 let _pendingCard = null;
+let _pendingIsNew = false;
 
 function buyPack() {
   if (G.gameState === 'pack_opening') return;
@@ -708,6 +743,11 @@ function buyPack() {
   G.kekCoins -= cost;
   G.packsPurchased++;
   _pendingCard = pullCard();
+  // Add the card now (not on dismiss) so closing the tab mid-animation can't lose it
+  const id = _pendingCard.id;
+  _pendingIsNew = !(G.collection[id] > 0);
+  G.collection[id] = (G.collection[id] || 0) + 1;
+  saveGame();
   openPackAnim(_pendingCard);
   updateUI();
 }
@@ -810,10 +850,7 @@ function dismissPack() {
   $packCardFace.classList.add('dismissing');
   $packHint.classList.remove('visible');
 
-  const id = _pendingCard.id;
-  const isNew = !(G.collection[id] > 0);
-  G.collection[id] = (G.collection[id] || 0) + 1;
-  log(`🃏 Pulled <span>${_pendingCard.name}</span> (${_pendingCard.type}${isNew ? ' — NEW!' : ''})`);
+  log(`🃏 Pulled <span>${_pendingCard.name}</span> (${_pendingCard.type}${_pendingIsNew ? ' — NEW!' : ''})`);
 
   setTimeout(() => {
     $packOverlay.classList.remove('active');
@@ -1005,6 +1042,7 @@ function equipCard(cardId) {
     G.binderSlots[_binderSelectedSlot] = cardId;
     // Restart TIMED_DROP timers so re-equipping can't trigger an instant drop
     card._lastDrop = Date.now();
+    applyNuggetTransform();   // Big Chungus
     log(`🃏 Equipped <span>${card.name}</span> to Slot ${_binderSelectedSlot + 1}`);
   }
   updateBinderSlotsUI();
@@ -1015,6 +1053,7 @@ function unequipSlot(slotIdx, event) {
   if (event) event.stopPropagation();
   const cardId = G.binderSlots[slotIdx];
   G.binderSlots[slotIdx] = null;
+  applyNuggetTransform();   // Big Chungus
   updateBinderSlotsUI();
   if (cardId) {
     const card = CARD_BY_ID.get(cardId);
@@ -1071,6 +1110,13 @@ function applyFieldTheme() {
     G.fireAccum = 0;
     _updateFireVisuals(0);
   }
+  // Moth and Lamp: a swap mid-blackout must not leave the screen black
+  if (G.fieldSlot !== 'f4') {
+    if (_mothBlackoutActive) _mothBlackoutEnd();
+    _mothBlackoutAccum = 0;
+  }
+  if (G.fieldSlot !== 'f3') _coinTrailAccum = 0;
+  renderBurnBar();   // Sigma Slam changes which burns are blocked
   if (!G.fieldSlot) return;
   const card = CARD_BY_ID.get(G.fieldSlot);
   if (card && card.archetype === 'FIELD_THEME' && card.params.theme) {
@@ -1266,9 +1312,7 @@ function doClick(cx, cy) {
       b.hits++;
       if (b.kekEveryNHits && b.hits % b.kekEveryNHits === 0 && b.kekPaid < b.kekCap) {
         b.kekPaid++;
-        G.kekCoins += 1;
-        G.totalKekEarned += 1;
-        updateCardShopUI();
+        awardKek(1);
       }
     }
   }
@@ -1796,14 +1840,29 @@ function showBurnToast(text) {
   setTimeout(() => t.remove(), 2100);
 }
 
+const RARITY_ORDER = { rare: 0, uncommon: 1, common: 2 };
 function renderBurnBar() {
   if (!G.cardShopUnlocked) { $burnBar.style.display = 'none'; return; }
-  const owned = CARD_LIBRARY.filter(c => c.type === 'Burn' && (G.collection[c.id] || 0) > 0);
+  // Rare → uncommon → common, then library order; BURN_INVENTORY_CAP cards per page
+  const owned = CARD_LIBRARY.filter(c => c.type === 'Burn' && (G.collection[c.id] || 0) > 0)
+    .sort((a, b) => RARITY_ORDER[a.rarity] - RARITY_ORDER[b.rarity]);
   if (owned.length === 0) { $burnBar.style.display = 'none'; return; }
   $burnBar.style.display = 'block';
   $burnBarItems.innerHTML = '';
-  const cards = owned.slice(0, BAL.BURN_INVENTORY_CAP);
+  const pages = Math.ceil(owned.length / BAL.BURN_INVENTORY_CAP);
+  G.burnBarPage = Math.max(0, Math.min(pages - 1, G.burnBarPage));
+  const cards = owned.slice(G.burnBarPage * BAL.BURN_INVENTORY_CAP, (G.burnBarPage + 1) * BAL.BURN_INVENTORY_CAP);
   const n = cards.length;
+  const pageBtn = (label, dir) => {
+    const b = document.createElement('button');
+    b.className = 'burn-page-btn';
+    b.textContent = label;
+    b.title = `Page ${G.burnBarPage + 1} / ${pages}`;
+    b.disabled = (G.burnBarPage + dir < 0 || G.burnBarPage + dir >= pages);
+    b.onclick = (e) => { e.stopPropagation(); G.burnBarPage += dir; renderBurnBar(); };
+    return b;
+  };
+  if (pages > 1) $burnBarItems.appendChild(pageBtn('◀', -1));
   // Fan spread: wider arc like MTG Arena (up to ±18° across the hand)
   const maxSpread = n > 1 ? Math.min(18, (n - 1) * 2.5) : 0;
   const stepDeg = n > 1 ? (maxSpread * 2) / (n - 1) : 0;
@@ -1812,7 +1871,7 @@ function renderBurnBar() {
     const cnt = G.collection[card.id] || 0;
     const rot = startDeg + stepDeg * i;
     const wrap = document.createElement('div');
-    wrap.className = 'burn-card-wrap';
+    wrap.className = 'burn-card-wrap' + (burnBlockedReason(card) ? ' blocked' : '');
     // transform-origin below card creates natural fan arc; no extra arcY needed
     wrap.style.cssText = `transform:rotate(${rot}deg);transform-origin:50% 120%;`;
     const hasMulti = card.params && card.params.multiKekBonus && cnt > 1;
@@ -1842,6 +1901,17 @@ function renderBurnBar() {
     });
     $burnBarItems.appendChild(wrap);
   });
+  if (pages > 1) $burnBarItems.appendChild(pageBtn('▶', 1));
+}
+
+// Why a burn can't be used right now (the card is kept), or null.
+function burnBlockedReason(card) {
+  const p = card.params || {};
+  if (card.archetype === 'AUTO_COLLECT' && !p.echoClick && getFieldParams().disableAutoCollect) return 'Sigma Slam: no auto-collect!';
+  // These only pay through nugget clicks, so their window would be wasted
+  const nuggetOnly = card.archetype === 'PRECISION' || card.archetype === 'TEMP_CLICK_MULT' || p.echoClick;
+  if (nuggetOnly && (G.boss?.active || activeTab !== 'sauces')) return 'The nugget is busy!';
+  return null;
 }
 
 function activateBurn(cardId) {
@@ -1854,6 +1924,8 @@ function activateBurn(cardId) {
   const card = CARD_BY_ID.get(cardId);
   if (!card || card.type !== 'Burn') return;
   if (!(G.collection[cardId] > 0)) return;
+  const blocked = burnBlockedReason(card);
+  if (blocked) { showBurnToast(blocked); return; }
   G.collection[cardId]--;
   G.burnCooldownUntil = now + BAL.BURN_GLOBAL_COOLDOWN_MS;
   showBurnToast(card.name);
@@ -1885,10 +1957,7 @@ const EFFECT_HANDLERS = {
       const amt = Math.max(floor, Math.min(cap, raw));
       G.aura += amt;
       spawnParticle(window.innerWidth / 2, window.innerHeight / 2, '+' + fmt(amt));
-      if (p.retroOverlay) {
-        document.body.style.filter = 'sepia(1) hue-rotate(90deg)';
-        setTimeout(() => document.body.style.filter = '', p.retroOverlay * 1000);
-      }
+      if (p.retroOverlay) bodyFxFor('fx-retro', p.retroOverlay * 1000);
       return;
     }
 
@@ -1930,10 +1999,8 @@ const EFFECT_HANDLERS = {
     if (p.doubleNext) G.doubleNextClick = true;
     // Arthur Fist: also drops Kek Koins as a bonus
     if (p.kekBonus) {
-      G.kekCoins += p.kekBonus;
-      G.totalKekEarned += p.kekBonus;
+      awardKek(p.kekBonus);
       spawnParticle(window.innerWidth / 2, window.innerHeight / 2 - 40, `+${p.kekBonus} 👑`);
-      updateUI();
     }
   },
   TEMP_CLICK_MULT(card, p) {
@@ -1977,11 +2044,7 @@ const EFFECT_HANDLERS = {
       // Pay once when the wave ends (after the last bone's own lifetime)
       setTimeout(() => {
         const kek = Math.round(caught * (p.kekPerBone || 0) * (p._copies || 1));
-        if (kek > 0) {
-          G.kekCoins += kek;
-          G.totalKekEarned += kek;
-          updateUI(); updateCardShopUI();
-        }
+        if (kek > 0) awardKek(kek);
         showBurnToast(`BORK! ${caught}/${total} bones: +${kek} Kek Koins!`);
         log(`🐕 Gabe: ${caught}/${total} bones caught — +${kek} Kek Koins!`);
       }, (total - 1) * ival + dur * 1000 + 600);
@@ -2136,8 +2199,8 @@ const EFFECT_HANDLERS = {
     }
   },
   AUTO_COLLECT(card, p) {
-    // Sigma Slam disableAutoCollect blocks all auto-collect burns
-    if (getFieldParams().disableAutoCollect) {
+    // Safety net (burnBlockedReason blocks these first): Sigma Slam disables auto-collect, not the echo
+    if (!p.echoClick && getFieldParams().disableAutoCollect) {
       showBurnToast('Sigma Slam: no auto-collect!');
       return;
     }
@@ -2206,18 +2269,9 @@ const EFFECT_HANDLERS = {
     // Own buff entry: another PRECISION card can't end or overwrite this window
     addClickBuff({ src: card.id, mult: p.mult || 1, t: dur, centerOnly: !!p.deadCenterOnly,
       easPerClick: p.easPerClick || 0, capEAS: p.capEAS || 0, kekEveryNHits: p.kekEveryNHits || 0, kekCap: p.kekCap || 0 });
-    if (p.smallNugget || p.invisibleNugget) {
-      const $c = document.getElementById('nugget-container');
-      const orig = $c.style.transform;
-      $c.style.transition = 'transform 0.3s, opacity 0.3s';
-      if (p.invisibleNugget) $c.style.opacity = '0.05';
-      if (p.smallNugget) {
-        const bs3 = getBinderStats();
-        const hitboxScale = bs3.hitboxBonus ? 0.55 : 0.35;  // Big Chungus: larger hit target
-        $c.style.transform = `translate(-50%,-50%) scale(${hitboxScale})`;
-      }
-      setTimeout(() => { $c.style.opacity = ''; $c.style.transform = orig; }, (p.duration || 10) * 1000);
-    }
+    // Nugget shrink / invisibility (Big Chungus: larger shrunk hit target, see applyNuggetTransform)
+    if (p.invisibleNugget) nuggetFxFor('invisible', dur * 1000);
+    if (p.smallNugget) nuggetFxFor('shrink', dur * 1000);
   },
   SCREEN_GAG(card, p) {
     const amt = computeBaseEAS() * (p.pityEAS || 30);
@@ -2231,17 +2285,13 @@ const EFFECT_HANDLERS = {
     } else {
       // Pity payout lands when the gag ends ("sit through it")
       const gagMs = (p.gagDuration || p.scramble || 3) * 1000;
-      if (p.scramble) document.body.style.filter = 'hue-rotate(180deg)';
-      if (p.blur) document.body.style.filter = `blur(${Math.min(p.blur, 8) / 4}px)`;
-      const $c = $nuggetContainer;
-      const origTransform = $c.style.transform;
-      if (p.biggerNugget) {
-        $c.style.transition = 'transform 0.3s';
-        $c.style.transform = 'translate(-50%,-50%) scale(1.4)';
+      if (p.scramble) bodyFxFor('fx-scramble', gagMs);
+      if (p.blur) {
+        document.body.style.setProperty('--fx-blur', `${Math.min(p.blur, 8) / 4}px`);
+        bodyFxFor('fx-blur', gagMs);
       }
+      if (p.biggerNugget) nuggetFxFor('grow', gagMs);
       setTimeout(() => {
-        document.body.style.filter = '';
-        if (p.biggerNugget) $c.style.transform = origTransform;
         G.aura += amt;
         spawnParticle(window.innerWidth / 2, window.innerHeight / 2, '+' + fmt(amt));
       }, gagMs);
@@ -2273,6 +2323,8 @@ function activateBurnMulti(cardId) {
   if (n < 2) { activateBurn(cardId); return; }
   const now = Date.now();
   if (now < G.burnCooldownUntil) { log('⏳ Burn cooldown — wait a moment.'); return; }
+  const blocked = burnBlockedReason(card);
+  if (blocked) { showBurnToast(blocked); return; }
   G.collection[cardId] -= n;
   G.burnCooldownUntil = now + BAL.BURN_GLOBAL_COOLDOWN_MS;
   const multiplier = Math.pow(2, n) - 1;
@@ -2334,8 +2386,20 @@ const KEK_BURST_TIME = 0.15;    // seconds before gravity kicks in
 const KEK_SETTLE_TIME = 0.4;     // seconds to lerp to upright
 const KEK_IDLE_TIMEOUT_S = 20;  // auto-collect after this long resting
 
+// The one path every Kek Koin grant goes through.
+function awardKek(n) {
+  G.kekCoins += n;
+  G.totalKekEarned += n;
+  updateUI();
+  updateCardShopUI();
+}
+
 function spawnKekCoin() {
-  if (!kekCoinTemplate || !nuggetModel) return;
+  // Models not loaded yet: pay the coin (and the PBJ bonus) directly instead of losing it
+  if (!kekCoinTemplate || !nuggetModel) {
+    awardKek(1 + (getFieldParams().kekDropBonus || 0));
+    return;
+  }
   const mesh = kekCoinTemplate.clone(true);
   // THREE clone() shares materials by reference — clone them too so per-coin
   // opacity changes (fade-on-collect) don't bleed across instances.
@@ -2380,11 +2444,7 @@ function spawnKekCoin() {
   });
   // Peanut Butter Jelly bonus: every natural drop also gives bonus Kek Koins directly.
   const kekDropBonus = getFieldParams().kekDropBonus || 0;
-  if (kekDropBonus) {
-    G.kekCoins += kekDropBonus;
-    G.totalKekEarned += kekDropBonus;
-    updateUI();
-  }
+  if (kekDropBonus) awardKek(kekDropBonus);
 }
 
 function spawnKekImpactBurst(pos) {
@@ -2430,15 +2490,12 @@ function collectKekCoin(coin, sx, sy) {
   coin.collected = true;
   const worth = (G.kekDoubleCount > 0) ? 2 : 1;
   if (G.kekDoubleCount > 0) G.kekDoubleCount--;
-  G.kekCoins += worth;
-  G.totalKekEarned += worth;
+  awardKek(worth);
   spawnKekCoinCollectFX(sx, sy);
   sfx('vine-boom-sound-meme', 0.35);
   // Brief pop animation: scale up + remove next frame chain
   coin._fadeTimer = 0;
   // Actual removal happens in tickKekCoins fade pass.
-  updateUI();
-  updateCardShopUI();
 }
 
 function tickKekCoins(dt) {
@@ -2571,11 +2628,9 @@ function spawnBurnKekCoin(kekAmt, emoji, requireHover) {
   const collect = () => {
     if (coin.classList.contains('collected')) return;
     coin.classList.add('collected');
-    G.kekCoins += kekAmt;
-    G.totalKekEarned += kekAmt;
+    awardKek(kekAmt);
     const rect = coin.getBoundingClientRect();
     spawnParticle(rect.left, rect.top, `+${kekAmt} 👑`);
-    updateUI(); updateCardShopUI();
     setTimeout(() => coin.remove(), 300);
   };
   if (requireHover) {
@@ -2704,13 +2759,16 @@ function spawnBurnTarget(card, p) {
   let hp = p.hp || 1;
   const timeoutMs = (p.timeout || 5) * 1000;
   const reward = p.kekReward ? 0 : computeBaseEAS() * (p.rewardEAS || p.reward || 60);
-  // moving:true (Leave Britney) wanders faster; all others drift slowly
+  // moving:true (Leave Britney) wanders faster; all others drift slowly (px per 60 Hz frame)
   const speed = p.moving ? 8 : 3;
+  const bs = getBinderStats();
+  const mine = [];   // this activation's targets, so its timeout can't touch another chase card's
   const spawnOne = () => {
     if (remaining <= 0) return;
     const tgt = document.createElement('div');
     tgt.className = 'burn-target';
     tgt.textContent = card.emoji;
+    if (bs.hitboxBonus) tgt.style.fontSize = '3.75rem';   // Big Chungus: 1.5× target
     tgt.style.left = (10 + Math.random() * 80) + 'vw';
     tgt.style.top = (15 + Math.random() * 65) + 'vh';
     let myHp = hp;
@@ -2730,6 +2788,7 @@ function spawnBurnTarget(card, p) {
       }, (p.regenDelay || 1.5) * 1000);
     };
     if (p.regenDelay) scheduleRegen();
+    mine.push({ tgt, stopRegen: () => clearTimeout(regenTimer) });
     tgt.onclick = () => {
       if (p.regenDelay) scheduleRegen();   // reset regen timer on each hit
       myHp--;
@@ -2742,22 +2801,18 @@ function spawnBurnTarget(card, p) {
         if (remaining <= 0) {
           if (p.kekReward) {
             // Zombie Kid Turtle: reward is Kek Koins, not Aura
-            G.kekCoins += p.kekReward;
-            G.totalKekEarned += p.kekReward;
+            awardKek(p.kekReward);
             showBurnToast(`+${p.kekReward} 👑 Kek Koins!`);
             spawnParticle(window.innerWidth / 2, window.innerHeight / 2, `+${p.kekReward} 👑`);
-            updateUI(); updateCardShopUI();
           } else {
             G.aura += reward;
             showBurnToast('+' + fmt(reward) + '!');
             spawnParticle(window.innerWidth / 2, window.innerHeight / 2, '+' + fmt(reward));
             // End of Ze World perfect-run bonus Kek Koins
             if (p.kekBonus) {
-              G.kekCoins += p.kekBonus;
-              G.totalKekEarned += p.kekBonus;
+              awardKek(p.kekBonus);
               spawnParticle(window.innerWidth / 2, window.innerHeight / 2 - 50, `+${p.kekBonus} 👑`);
               log(`☄️ Perfect run! +${p.kekBonus} Kek Koins!`);
-              updateUI(); updateCardShopUI();
             }
           }
         } else {
@@ -2767,11 +2822,15 @@ function spawnBurnTarget(card, p) {
     };
     $burnFx.appendChild(tgt);
     $burnFx.style.display = 'block';
-    let dx = (Math.random() - 0.5) * speed * 2, dy = (Math.random() - 0.5) * speed * 2;
-    const wander = () => {
+    // Velocity in px/s (speed was tuned per 60 Hz frame), stepped by real frame time
+    let dx = (Math.random() - 0.5) * speed * 2 * 60, dy = (Math.random() - 0.5) * speed * 2 * 60;
+    let last = null;
+    const wander = (ts) => {
       if (!tgt.parentNode) return;
+      const dt = last === null ? 0 : Math.min(0.1, (ts - last) / 1000);
+      last = ts;
       const cur = tgt.getBoundingClientRect();
-      let nl = cur.left + dx, nt = cur.top + dy;
+      let nl = cur.left + dx * dt, nt = cur.top + dy * dt;
       if (nl < 20 || nl > window.innerWidth - 100) dx = -dx;
       if (nt < 60 || nt > window.innerHeight - 120) dy = -dy;
       tgt.style.left = (nl / window.innerWidth * 100) + 'vw';
@@ -2782,7 +2841,7 @@ function spawnBurnTarget(card, p) {
   };
   spawnOne();
   setTimeout(() => {
-    $burnFx.querySelectorAll('.burn-target').forEach(t => t.remove());
+    mine.forEach(m => { m.stopRegen(); m.tgt.remove(); });
     if (remaining > 0) log(`❌ ${card.name} missed!`);
   }, timeoutMs);
 }
@@ -2970,6 +3029,7 @@ function startBossFight() {
     lastInteract: Date.now(),
   };
   $bossOverlay.classList.add('active');
+  renderBurnBar();   // nugget-only burns are blocked during the boss
   sfxRand(S.toilet, 0.8);
   log('🚽 <span>SKIBIDI TOILET ATTACK!</span> Click frantically to defeat!');
 }
@@ -2986,15 +3046,14 @@ function endBossFight(victory) {
     // Ohio Boss: defeating the Skibidi Toilet in Ohio drops bonus Kek Koins
     const fp = getFieldParams();
     if (fp.kekBossReward) {
-      G.kekCoins += fp.kekBossReward;
-      G.totalKekEarned += fp.kekBossReward;
+      awardKek(fp.kekBossReward);
       log(`👑 <span>Ohio Boss bonus: +${fp.kekBossReward} Kek Koins!</span>`);
-      updateCardShopUI();
     }
   } else {
     log(`💩 Skibidi escaped with ${(G.boss.drainAccumPct * 100).toFixed(0)}% of your aura.`);
   }
   G.boss = null;
+  renderBurnBar();
 }
 
 $bossSprite.addEventListener('click', () => {
@@ -3104,6 +3163,8 @@ function loadGame() {
     if (d.totalKekEarned !== undefined) G.totalKekEarned = d.totalKekEarned;
     if (d.kekDoubleCount !== undefined) G.kekDoubleCount = d.kekDoubleCount;
     if (d.fireLevel !== undefined && G.fieldSlot === 'f5') G.fireLevel = d.fireLevel;
+    G.lastIdleClickTime = Date.now();   // First World Problems: idle time counts from load
+    applyNuggetTransform();             // Big Chungus
 
     log('💾 <span>Save loaded!</span>');
   } catch (e) { console.warn('Save data corrupted, starting fresh:', e); }

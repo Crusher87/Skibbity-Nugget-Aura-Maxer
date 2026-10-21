@@ -354,6 +354,7 @@ Differentiation axis: **click pattern** (rapid discrete / echo-mirror / boss-pie
 - [x] Economy refactor (computeBaseEAS added; INSTANT_BURST + GAMBLE handlers fixed)
 - [ ] Per-batch implementation (new params need rendering logic)
   - [x] B1 — exploits + one buff list (D1 multi-copy cap, D2 Brain, OAG Kek cap, additive buffs, D6 mechanism, base EAS everywhere): [docs/balance/B1.md](docs/balance/B1.md)
+  - [x] B2 — stuck states and lost cards (burn gate + paged bar above the boss, nugget-size counters + Big Chungus, chase timeouts, Moth swap, FWP, pack on purchase, `awardKek`, filter variables): [docs/balance/B2.md](docs/balance/B2.md)
 - [ ] Pack pull validation
 
 ### Phase 6 — Playtest
