@@ -30,6 +30,8 @@ A card should pay **Aura or Kek as its main reward**, not full value of both (Ch
 
 ## 2. Decisions Curtis makes first (approval gate)
 
+> **Approved 2026-10-21:** Curtis took every recommendation below (D1 a, D2 a, D3 as recommended, D4 a, D5 a, D6 decide after review numbers).
+
 Nothing is implemented until these are answered. Each has a recommendation; the review's decision list may add more.
 
 | # | Question | Options | Recommendation |
