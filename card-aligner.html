@@ -1,0 +1,601 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Card Aligner — Skibidi Nugget</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bangers&family=Inter:wght@400;600&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+body{background:#0d0d1a;color:#e0e0ff;font-family:'Inter',sans-serif;font-size:14px;min-height:100vh;}
+
+#topbar{display:flex;align-items:center;gap:10px;padding:10px 18px;background:#13132a;border-bottom:1px solid #2a2a4a;position:sticky;top:0;z-index:200;}
+#topbar h1{font-family:'Bangers',cursive;font-size:1.4rem;letter-spacing:.06em;color:#ffd700;margin-right:auto;}
+.view-btn{padding:6px 16px;border:1px solid #3a3a6a;border-radius:6px;background:#1e1e3a;color:#aaa;cursor:pointer;font-size:13px;}
+.view-btn.active{background:#3a3aff22;border-color:#6060ff;color:#fff;}
+#save-btn{padding:6px 18px;background:#1a3a1a;border:1px solid rgba(100,220,100,.4);border-radius:6px;color:#6eff6e;cursor:pointer;font-size:13px;font-weight:600;}
+#session-info{font-size:12px;color:#666;margin-left:8px;}
+
+#single-view{display:flex;gap:30px;padding:24px;align-items:flex-start;}
+#single-nav{display:flex;align-items:center;gap:12px;margin-top:14px;justify-content:center;}
+.nav-btn{padding:7px 20px;border:1px solid #3a3a6a;border-radius:6px;background:#1e1e3a;color:#ccc;cursor:pointer;font-size:13px;}
+.nav-btn:hover{background:#2a2a5a;}
+#card-counter{color:#888;font-size:13px;min-width:70px;text-align:center;}
+#controls{flex:1;min-width:260px;max-width:320px;max-height:calc(100vh - 80px);overflow-y:auto;}
+#ctrl-title{font-family:'Bangers',cursive;font-size:1.15rem;color:#ffd700;letter-spacing:.05em;margin-bottom:2px;}
+#ctrl-sub{color:#888;font-size:11px;margin-bottom:12px;}
+.ctrl-divider{border:none;border-top:1px solid #2a2a4a;margin:12px 0;}
+.ctrl-row{display:flex;align-items:center;gap:8px;margin-bottom:10px;}
+.ctrl-label{min-width:44px;color:#aaa;font-size:12px;}
+.ctrl-row input[type=range]{flex:1;accent-color:#6060ff;}
+.ctrl-val{min-width:50px;text-align:right;font-size:12px;color:#ddd;font-variant-numeric:tabular-nums;}
+.ctrl-btn{padding:7px 14px;border-radius:6px;border:1px solid;cursor:pointer;font-size:13px;font-weight:600;}
+#reset-btn{background:#2a1a1a;border-color:rgba(220,80,80,.4);color:#ff8888;}
+#done-btn{background:#1a2a1a;border-color:rgba(80,200,80,.4);color:#88ff88;}
+.status-badge{display:inline-block;padding:2px 9px;border-radius:10px;font-size:11px;font-weight:600;margin-bottom:10px;}
+.status-badge.done{background:rgba(80,200,80,.15);color:#88ff88;border:1px solid rgba(80,200,80,.3);}
+.status-badge.default{background:rgba(120,120,180,.1);color:#888;border:1px solid rgba(120,120,180,.2);}
+.no-image-note{color:#666;font-style:italic;font-size:12px;margin-top:8px;}
+.hint-box{background:#111128;border:1px solid #2a2a4a;border-radius:6px;padding:10px;font-size:11px;color:#666;line-height:1.6;}
+.hint-box strong{color:#888;}
+
+/* Icon controls section */
+.icon-section-title{font-family:'Bangers',cursive;font-size:1rem;color:#cc88ff;letter-spacing:.05em;margin-bottom:8px;}
+.icon-ctrl-row input[type=range]{accent-color:#9040cc;}
+#reset-icon-btn{background:#1a1a2a;border-color:rgba(180,100,255,.4);color:#cc88ff;}
+
+/* Gallery */
+#gallery-view{display:none;padding:20px 18px;}
+#gallery-header{font-family:'Bangers',cursive;font-size:1.2rem;color:#ffd700;letter-spacing:.05em;margin-bottom:6px;}
+#gallery-legend{display:flex;gap:16px;font-size:12px;color:#888;margin-bottom:16px;}
+.legend-dot{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:4px;vertical-align:middle;}
+#gallery-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(155px,1fr));gap:14px;}
+.gallery-card-wrap{cursor:pointer;border-radius:8px;overflow:hidden;border:2px solid transparent;transition:border-color .15s,transform .1s;}
+.gallery-card-wrap:hover{transform:scale(1.03);}
+.gallery-card-wrap.status-done{border-color:#44cc44;}
+.gallery-card-wrap.status-default{border-color:#33335a;}
+.gallery-card-wrap.no-img{border-color:#222240;opacity:.55;}
+.gallery-label{background:#13132a;padding:4px 6px;font-size:10px;color:#999;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+
+/* ── Card face ── */
+.card-face{position:relative;background-color:#060412;border-radius:6px;overflow:hidden;flex-shrink:0;}
+.card-face.rarity-common      {box-shadow:0 0 18px rgba(139,195,74,.5);}
+.card-face.rarity-uncommon    {box-shadow:0 0 18px rgba(3,169,244,.5);}
+.card-face.rarity-rare        {box-shadow:0 0 22px rgba(156,39,176,.65);}
+.card-face.rarity-mythic-rare {box-shadow:0 0 26px rgba(255,215,0,.8),0 0 50px rgba(255,150,0,.3);}
+
+.art-window{position:absolute;overflow:hidden;background:#060412;cursor:grab;}
+.art-window:active{cursor:grabbing;}
+.meme-img{position:absolute;top:0;left:0;width:100%;height:100%;object-fit:contain;object-position:center center;transform-origin:center center;user-select:none;pointer-events:none;}
+.emoji-fallback{position:absolute;top:0;left:0;width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:4rem;pointer-events:none;}
+.cf-template{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:1;}
+.cf-rules-area{position:absolute;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;overflow:hidden;z-index:2;}
+.cf-name{font-family:'Bangers',cursive;color:#fff;text-align:center;line-height:1.1;letter-spacing:.04em;text-shadow:0 1px 4px rgba(0,0,0,.9);}
+.cf-type{letter-spacing:.1em;text-transform:uppercase;font-family:'Bangers',cursive;}
+.cf-desc{color:#e8e4ff;text-align:center;line-height:1.25;font-style:italic;}
+.cf-flavor-sep{width:70%;border:none;border-top:1px solid rgba(255,255,255,0.2);margin:2px 0 1px;flex-shrink:0;}
+.cf-flavor{color:#b8b0d8;text-align:center;font-style:italic;line-height:1.2;}
+</style>
+</head>
+<body>
+
+<div id="topbar">
+  <h1>🃏 Card Aligner</h1>
+  <button class="view-btn active" id="btn-single"  onclick="setView('single')">Single View</button>
+  <button class="view-btn"        id="btn-gallery" onclick="setView('gallery')">Gallery View</button>
+  <button id="save-btn" onclick="saveJSON()">💾 Save JSON</button>
+  <span id="session-info"></span>
+</div>
+
+<div id="single-view">
+  <div id="card-col">
+    <div id="card-stage"></div>
+    <div id="single-nav">
+      <button class="nav-btn" onclick="navigate(-1)">◀ Prev</button>
+      <span id="card-counter"></span>
+      <button class="nav-btn" onclick="navigate(1)">Next ▶</button>
+    </div>
+  </div>
+  <div id="controls">
+    <!-- Image alignment -->
+    <div id="ctrl-title"></div>
+    <div id="ctrl-sub"></div>
+    <div id="ctrl-status"></div>
+    <hr class="ctrl-divider">
+    <div id="ctrl-sliders">
+      <div class="ctrl-row">
+        <span class="ctrl-label">Zoom</span>
+        <input type="range" id="sl-scale" min="100" max="400" step="1" oninput="sliderChange('scale',this.value/100)">
+        <span class="ctrl-val" id="val-scale">1.00×</span>
+      </div>
+      <div class="ctrl-row">
+        <span class="ctrl-label">X</span>
+        <input type="range" id="sl-x" min="-100" max="100" step="0.5" oninput="sliderChange('x',parseFloat(this.value))">
+        <span class="ctrl-val" id="val-x">0%</span>
+      </div>
+      <div class="ctrl-row">
+        <span class="ctrl-label">Y</span>
+        <input type="range" id="sl-y" min="-100" max="100" step="0.5" oninput="sliderChange('y',parseFloat(this.value))">
+        <span class="ctrl-val" id="val-y">0%</span>
+      </div>
+    </div>
+    <div id="no-img-note" class="no-image-note" style="display:none">No image — emoji shown.</div>
+    <hr class="ctrl-divider">
+    <div style="display:flex;gap:8px;">
+      <button class="ctrl-btn" id="reset-btn" onclick="resetCard()">↺ Reset</button>
+      <button class="ctrl-btn" id="done-btn"  onclick="markDone()">✓ Done → Next</button>
+    </div>
+
+    <!-- Icon badge position (global — applies to all cards) -->
+    <hr class="ctrl-divider" style="margin-top:16px;">
+    <div class="icon-section-title">📍 Icon Badge Position <span style="font-family:Inter,sans-serif;font-size:10px;color:#666;font-weight:normal;">(all cards)</span></div>
+    <div class="ctrl-row icon-ctrl-row">
+      <span class="ctrl-label">Top</span>
+      <input type="range" id="sl-itop" min="50" max="70" step="0.5" oninput="iconSliderChange('top',parseFloat(this.value))">
+      <span class="ctrl-val" id="val-itop">59.5%</span>
+    </div>
+    <div class="ctrl-row icon-ctrl-row">
+      <span class="ctrl-label">Right</span>
+      <input type="range" id="sl-iright" min="2" max="20" step="0.5" oninput="iconSliderChange('right',parseFloat(this.value))">
+      <span class="ctrl-val" id="val-iright">9.0%</span>
+    </div>
+    <div class="ctrl-row icon-ctrl-row">
+      <span class="ctrl-label">Size</span>
+      <input type="range" id="sl-isize" min="3" max="15" step="0.5" oninput="iconSliderChange('size',parseFloat(this.value))">
+      <span class="ctrl-val" id="val-isize">6.0%</span>
+    </div>
+    <div style="display:flex;gap:8px;">
+      <button class="ctrl-btn" id="reset-icon-btn" onclick="resetIconPos()">↺ Reset Icon</button>
+    </div>
+
+    <hr class="ctrl-divider" style="margin-top:16px;">
+    <div class="hint-box">
+      <strong>Image:</strong> Drag to pan, scroll to zoom.<br>
+      Mark Done → auto-advances.<br><br>
+      <strong>Icon:</strong> Sliders move the badge for all cards at once. Save JSON to export both.
+    </div>
+  </div>
+</div>
+
+<div id="gallery-view">
+  <div id="gallery-header">All Cards</div>
+  <div id="gallery-legend">
+    <span><span class="legend-dot" style="background:#44cc44"></span>Done</span>
+    <span><span class="legend-dot" style="background:#33335a"></span>Default</span>
+    <span><span class="legend-dot" style="background:#222240;opacity:.6"></span>No image</span>
+  </div>
+  <div id="gallery-grid"></div>
+</div>
+
+<script>
+// ── Reference card dimensions ──
+const SINGLE_W = 420;
+const SINGLE_H = Math.round(SINGLE_W * 88 / 63);
+
+const AW = {
+  top:  Math.round(SINGLE_H * 0.10),
+  left: Math.round(SINGLE_W * 0.06),
+  w:    Math.round(SINGLE_W * 0.88),
+  h:    Math.round(SINGLE_H * 0.52),
+};
+const RA = {
+  top:  Math.round(SINGLE_H * 0.645),
+  left: Math.round(SINGLE_W * 0.07),
+  w:    Math.round(SINGLE_W * 0.86),
+  h:    Math.round(SINGLE_H * 0.195),
+};
+
+const GALLERY_W = 150;
+const GALLERY_H = Math.round(GALLERY_W * 88 / 63);
+const SCALE_G = GALLERY_W / SINGLE_W;
+const GAW = { top:Math.round(AW.top*SCALE_G), left:Math.round(AW.left*SCALE_G), w:Math.round(AW.w*SCALE_G), h:Math.round(AW.h*SCALE_G) };
+const GRA = { top:Math.round(RA.top*SCALE_G), left:Math.round(RA.left*SCALE_G), w:Math.round(RA.w*SCALE_G), h:Math.round(RA.h*SCALE_G) };
+
+// ── Rarity icon mapping ──
+const RARITY_ICON = {
+  'common':      'Images/Cards/Glitched Genesis - Common.png',
+  'uncommon':    'Images/Cards/Glitched Genesis - Uncommon.png',
+  'rare':        'Images/Cards/Glitched Genesis - Rare.png',
+  'mythic-rare': 'Images/Cards/Glitched Genesis - Mythic.png',
+};
+const RARITY_BORDER = {
+  'common':      '#8bc34a',
+  'uncommon':    '#03a9f4',
+  'rare':        '#9c27b0',
+  'mythic-rare': '#ffd700',
+};
+
+// ── Card data ──
+const CARDS = [
+  {id:'f1',  name:'Ohio Boss',              emoji:'🌽', type:'Field',  rarity:'mythic-rare', desc:'Only in Ohio could this happen.',       archetype:'FIELD_THEME',       params:{mult:0.50}},
+  {id:'f2',  name:'Sigma Slam',             emoji:'🗿', type:'Field',  rarity:'mythic-rare', desc:'Pure Sigma energy in grayscale.',        archetype:'FIELD_THEME',       params:{mult:0.80}},
+  {id:'f3',  name:'Nyan Cat',               emoji:'🌈', type:'Field',  rarity:'mythic-rare', desc:'Rainbow trail cosmic vibes.',            archetype:'FIELD_THEME',       params:{mult:0.40}},
+  {id:'f4',  name:'Moth and Lamp',          emoji:'🪔', type:'Field',  rarity:'mythic-rare', desc:'Darkness, except where the lamp glows.', archetype:'FIELD_THEME',       params:{mult:0.65}},
+  {id:'f5',  name:'This is Fine',           emoji:'🔥', type:'Field',  rarity:'mythic-rare', desc:'Everything is on fire and faster.',      archetype:'FIELD_THEME',       params:{mult:0.25}},
+  {id:'f6',  name:'Peanut Butter Jelly',    emoji:'🍌', type:'Field',  rarity:'mythic-rare', desc:'Time! Dancing banana time!',             archetype:'FIELD_THEME',       params:{mult:0.40}},
+  {id:'bi_c1', name:'Shrek',               emoji:'🧅', type:'Binder', rarity:'common',      desc:'+5% global multiplier.',                 archetype:'GLOBAL_MULT',       params:{mult:0.05}},
+  {id:'bi_c2', name:'Harambe',             emoji:'🦍', type:'Binder', rarity:'common',      desc:'+5% click power.',                       archetype:'PASSIVE_APC_PCT',   params:{pct:0.05}},
+  {id:'bi_c3', name:'Stonks',              emoji:'📈', type:'Binder', rarity:'common',      desc:'Bonus aura tick every 90s.',             archetype:'TIMED_DROP',        params:{interval:90}},
+  {id:'bi_c4', name:'Philosoraptor',       emoji:'🦖', type:'Binder', rarity:'common',      desc:'Question marks float; hover to claim.', archetype:'TIMED_DROP',        params:{interval:120}},
+  {id:'bi_c5', name:'Doge',               emoji:'🐕', type:'Binder', rarity:'common',      desc:'Such bonus, much aura — every 60s.',    archetype:'TIMED_DROP',        params:{interval:60}},
+  {id:'bi_c6', name:'First World Problems',emoji:'😢', type:'Binder', rarity:'common',      desc:'0.5%/s idle drip.',                      archetype:'IDLE_DRIP',         params:{rate:0.005}},
+  {id:'bi_u1', name:'Grumpy Cat',          emoji:'😾', type:'Binder', rarity:'uncommon',    desc:'-10% upgrade costs.',                    archetype:'COST_REDUCTION',    params:{reduce:0.10}},
+  {id:'bi_u2', name:'Success Kid',         emoji:'👶', type:'Binder', rarity:'uncommon',    desc:'Better pack pulls.',                      archetype:'PACK_LUCK',         params:{rareBonus:0.05}},
+  {id:'bi_u3', name:'Big Chungus',         emoji:'🐰', type:'Binder', rarity:'uncommon',    desc:'Big nugget +5% APC.',                     archetype:'BIGGER_TARGET',     params:{scale:1.5,apcBonus:0.05}},
+  {id:'bi_u4', name:'Hide the Pain Harold',emoji:'🙂', type:'Binder', rarity:'uncommon',    desc:"Skibidi drains 20% less.",                archetype:'EVENT_SOFTENER',    params:{drainMult:0.8}},
+  {id:'bi_u5', name:'I Can Has Cheezburger',emoji:'🍔',type:'Binder', rarity:'uncommon',    desc:'Burger floats by every 60s.',             archetype:'TIMED_DROP',        params:{interval:60}},
+  {id:'bi_u6', name:'Expanding Brain',     emoji:'🧠', type:'Binder', rarity:'uncommon',    desc:'+1% APC/min, caps at +30%.',              archetype:'SCALING_OVER_TIME', params:{capPct:0.30}},
+  {id:'bi_r1', name:'Chuck Norris',        emoji:'🥋', type:'Binder', rarity:'rare',        desc:'Every 10th click is a 10× crit.',         archetype:'CRIT_CHANCE',       params:{everyN:10,mult:10}},
+  {id:'bi_r2', name:'Pepe (Mood Swing)',   emoji:'🐸', type:'Binder', rarity:'rare',        desc:'Rotating buff every 30s.',                archetype:'MOOD_SWING',        params:{cycleSec:30}},
+  {id:'bi_r3', name:'GigaChad',            emoji:'🗿', type:'Binder', rarity:'rare',        desc:'+20% APS. Grayscale. Yes.',               archetype:'PASSIVE_APS_PCT',   params:{pct:0.20}},
+  {id:'bu_c1',  name:'Troll Face',              emoji:'😈', type:'Burn', rarity:'common',      desc:'Catch the juking nugget!',           archetype:'TARGET_CHASE',    params:{targets:1,timeout:5}},
+  {id:'bu_c2',  name:'Is This a Pigeon?',       emoji:'🦋', type:'Burn', rarity:'common',      desc:'Butterfly rain — catch them all.',   archetype:'COIN_RAIN',       params:{coins:6}},
+  {id:'bu_c3',  name:'Spiderman Pointing',      emoji:'🕷️', type:'Burn', rarity:'common',      desc:'Mirrored auto-clicks.',              archetype:'AUTO_COLLECT',    params:{clicks:15,mult:2.0,duration:5}},
+  {id:'bu_c4',  name:'Distracted Boyfriend',    emoji:'👀', type:'Burn', rarity:'common',      desc:'Cursor splits — gentle auto-click.', archetype:'AUTO_COLLECT',    params:{clicks:20,mult:1.5,duration:5}},
+  {id:'bu_c5',  name:'Mocking SpongeBob',       emoji:'🧽', type:'Burn', rarity:'common',      desc:'mOcKiNg AuRa — pity payout.',        archetype:'SCREEN_GAG',      params:{pityEAS:33}},
+  {id:'bu_c6',  name:'Bad Luck Brian',          emoji:'😬', type:'Burn', rarity:'common',      desc:'Fake error → pity bonus.',           archetype:'SCREEN_GAG',      params:{pityEAS:33}},
+  {id:'bu_c7',  name:'Epic Fail Guy',           emoji:'🤡', type:'Burn', rarity:'common',      desc:'Faceplant compensation.',            archetype:'INSTANT_BURST',   params:{apsSeconds:30}},
+  {id:'bu_c8',  name:'Charlie Bit My Finger',   emoji:'👶', type:'Burn', rarity:'common',      desc:'1.5× APS for 20s.',                  archetype:'TEMP_APS_MULT',   params:{mult:1.5,duration:20}},
+  {id:'bu_c9',  name:'Have You Ever Had A Dream',emoji:'💭',type:'Burn', rarity:'common',      desc:'1.5× APS for 20s, freezes boss.',    archetype:'TEMP_APS_MULT',   params:{mult:1.5,duration:20}},
+  {id:'bu_c10', name:'Kazoo Kid',               emoji:'🎺', type:'Burn', rarity:'common',      desc:'Coin rain from a kazoo.',            archetype:'COIN_RAIN',       params:{coins:10}},
+  {id:'bu_c11', name:'Star Wars Kid',           emoji:'⚔️', type:'Burn', rarity:'common',      desc:'2× clicks for 15s.',                 archetype:'TEMP_CLICK_MULT', params:{mult:2,duration:15}},
+  {id:'bu_c12', name:'Vitas (Chum Drum)',        emoji:'🎤', type:'Burn', rarity:'common',      desc:'Falsetto auto-clicks.',              archetype:'AUTO_COLLECT',    params:{clicks:12,mult:2.5,duration:5}},
+  {id:'bu_c13', name:'Pink Guy Ravioli',         emoji:'🍝', type:'Burn', rarity:'common',      desc:'Ravioli splat rain.',                archetype:'COIN_RAIN',       params:{coins:8}},
+  {id:'bu_c14', name:'Dramatic Chipmunk',        emoji:'🐹', type:'Burn', rarity:'common',      desc:'5× clicks for 5s.',                  archetype:'TEMP_CLICK_MULT', params:{mult:5,duration:5}},
+  {id:'bu_c15', name:'Disaster Girl',            emoji:'🔥', type:'Burn', rarity:'common',      desc:'Burn ash auto-collect.',             archetype:'AUTO_COLLECT',    params:{clicks:10,mult:3,duration:4}},
+  {id:'bu_c16', name:'David After Dentist',      emoji:'😵', type:'Burn', rarity:'common',      desc:'Blurry pity — is this real life?',  archetype:'SCREEN_GAG',      params:{pityEAS:33}},
+  {id:'bu_c17', name:'Ermahgerd',                emoji:'📚', type:'Burn', rarity:'common',      desc:'ERMAHGERD AURA!',                    archetype:'INSTANT_BURST',   params:{apsSeconds:30}},
+  {id:'bu_c18', name:'All Your Base',            emoji:'👾', type:'Burn', rarity:'common',      desc:'Retro hack deposit.',                archetype:'INSTANT_BURST',   params:{apsSeconds:30}},
+  {id:'bu_u1',  name:'MLG Airhorn',              emoji:'📯', type:'Burn', rarity:'uncommon',    desc:'360 NO-SCOPE burst.',                archetype:'INSTANT_BURST',   params:{apsSeconds:120}},
+  {id:'bu_u2',  name:'Arthur Fist',              emoji:'👊', type:'Burn', rarity:'uncommon',    desc:'Slam burst, next click doubled.',    archetype:'INSTANT_BURST',   params:{apsSeconds:120}},
+  {id:'bu_u3',  name:'Ugandan Knuckles',         emoji:'🔴', type:'Burn', rarity:'uncommon',    desc:'Click 8 swarming Knuckles.',         archetype:'TARGET_CHASE',    params:{targets:8,timeout:10}},
+  {id:'bu_u4',  name:'Woman Yelling at Cat',     emoji:'😾', type:'Burn', rarity:'uncommon',    desc:'Rhythm ping-pong.',                  archetype:'RHYTHM',          params:{hits:4,maxMult:6,duration:10}},
+  {id:'bu_u5',  name:'Leave Britney Alone',      emoji:'😭', type:'Burn', rarity:'uncommon',    desc:'Crack the shield (8 HP).',           archetype:'TARGET_CHASE',    params:{targets:1,hp:8,timeout:6}},
+  {id:'bu_u6',  name:'Surgery on a Grape',       emoji:'🍇', type:'Burn', rarity:'uncommon',    desc:'Tiny nugget, big payoff.',           archetype:'PRECISION',       params:{duration:10,mult:5}},
+  {id:'bu_u7',  name:'Chocolate Rain',           emoji:'🍫', type:'Burn', rarity:'uncommon',    desc:'Brown pixel rain.',                  archetype:'COIN_RAIN',       params:{coins:20}},
+  {id:'bu_u8',  name:'Zombie Kid Turtle',        emoji:'🐢', type:'Burn', rarity:'uncommon',    desc:'I like turtles. Crack the shell.',   archetype:'TARGET_CHASE',    params:{targets:1,hp:5,timeout:5}},
+  {id:'bu_u9',  name:'Keyboard Cat',             emoji:'🎹', type:'Burn', rarity:'uncommon',    desc:'Play him off — rhythm.',             archetype:'RHYTHM',          params:{hits:5,maxMult:6,duration:8}},
+  {id:'bu_u10', name:'Numa Numa Dance',          emoji:'💃', type:'Burn', rarity:'uncommon',    desc:'Ma-ia hi rhythm pumps.',             archetype:'RHYTHM',          params:{hits:6,maxMult:5,duration:10}},
+  {id:'bu_u11', name:'Shooting Stars',           emoji:'🌠', type:'Burn', rarity:'uncommon',    desc:'Neon star rain.',                    archetype:'COIN_RAIN',       params:{coins:15}},
+  {id:'bu_u12', name:'Rickroll',                 emoji:'🕺', type:'Burn', rarity:'uncommon',    desc:'Never gonna stop — 3× APS 60s.',    archetype:'TEMP_APS_MULT',   params:{mult:3,duration:60}},
+  {id:'bu_u13', name:'Gabe the Dog',             emoji:'🐕', type:'Burn', rarity:'uncommon',    desc:'Bork bork bone bullet hell.',        archetype:'COIN_RAIN',       params:{coins:25}},
+  {id:'bu_r1',  name:'John Cena',                emoji:'💪', type:'Burn', rarity:'rare',        desc:'Invisible nugget, 5× clicks 15s.',   archetype:'PRECISION',       params:{duration:15,mult:5}},
+  {id:'bu_r2',  name:'Just Do It (Shia)',        emoji:'🎯', type:'Burn', rarity:'rare',        desc:'Rhythm to a 10× crescendo.',         archetype:'RHYTHM',          params:{hits:8,maxMult:10,duration:12}},
+  {id:'bu_r3',  name:'Leroy Jenkins',            emoji:'🛡️', type:'Burn', rarity:'rare',        desc:'LEEEEROY — intercept in 3s.',        archetype:'TARGET_CHASE',    params:{targets:1,timeout:3}},
+  {id:'bu_r4',  name:'El Risitas',               emoji:'😂', type:'Burn', rarity:'rare',        desc:'JA JA JA — massive burst.',          archetype:'INSTANT_BURST',   params:{apsSeconds:600}},
+  {id:'bu_r5',  name:'End of Ze World',          emoji:'☄️', type:'Burn', rarity:'rare',        desc:'25 missile clicks in 15s.',          archetype:'TARGET_CHASE',    params:{targets:25,timeout:15}},
+  {id:'bu_r6',  name:'Overly Attached GF',       emoji:'😍', type:'Burn', rarity:'rare',        desc:'Dead-center clicks only. 6× value.', archetype:'PRECISION',       params:{duration:15,mult:6}},
+  {id:'bu_r7',  name:'Evil Kermit',              emoji:'🐸', type:'Burn', rarity:'rare',        desc:'Do it. 50/50 — double or zero.',     archetype:'GAMBLE',          params:{winEAS:1200,p:0.5}},
+];
+
+const CARD_IMAGES = {
+  'f3':'Images/Cards/Nyan Cat.jpg','f4':'Images/Cards/Moth and lamp.jpg',
+  'f5':'Images/Cards/This is fine.png','f6':'Images/Cards/Its peanut butter jelly time.jpg',
+  'bi_c1':'Images/Cards/Shrek.jpg','bi_c2':'Images/Cards/Harambe.jpg',
+  'bi_c3':'Images/Cards/Stonks.png','bi_c4':'Images/Cards/philosoraprot.png',
+  'bi_c5':'Images/Cards/Doge.jpg','bi_c6':'Images/Cards/First world problems.png',
+  'bi_u1':'Images/Cards/Grumpy Cat.jpg','bi_u2':'Images/Cards/SuccessKid.jpg',
+  'bi_u3':'Images/Cards/Big_Chungus.png','bi_u4':'Images/Cards/Hide the pain.png',
+  'bi_u5':'Images/Cards/i-can-has-cheezburger-cat.jpg','bi_u6':'Images/Cards/Expanding Brain.png',
+  'bi_r1':'Images/Cards/Chuck Norris.png','bi_r2':'Images/Cards/Pepe.jpg','bi_r3':'Images/Cards/Gigachad.jpg',
+  'bu_c1':'Images/Cards/Trollface.png','bu_c2':'Images/Cards/Is_this_a_pigeon.jpg',
+  'bu_c3':'Images/Cards/spiderman pointing.jpg','bu_c4':'Images/Cards/distracted-boyfriend.jpg',
+  'bu_c5':'Images/Cards/Mocking-Spongebob.jpg','bu_c6':'Images/Cards/Bad_Luck_Brian.jpg',
+  'bu_c7':'Images/Cards/Epic Fail Guy.jpg','bu_c8':'Images/Cards/Charlie_Bit_My_Finger_screenshot.png',
+  'bu_c9':'Images/Cards/Have you ever had a dream.jpg','bu_c10':'Images/Cards/Kazoo kid.jpg',
+  'bu_c11':'Images/Cards/Star_Wars_Kid.jpg','bu_c12':'Images/Cards/Vitas.jpg',
+  'bu_c13':'Images/Cards/Pink guy harlem shake.jpg','bu_c14':'Images/Cards/Dramatic_Chipmunk.png',
+  'bu_c15':'Images/Cards/disaster-girl.jpg','bu_c16':'Images/Cards/David_After_Dentist_screenshot.jpg',
+  'bu_c17':'Images/Cards/Ermahgerd.jpg','bu_c18':'Images/Cards/All Your Base Are Belong to Us.png',
+  'bu_u1':'Images/Cards/mlg-air-horn.jpg','bu_u2':'Images/Cards/arthur-fist.png',
+  'bu_u3':'Images/Cards/uganda-knuckles.png','bu_u4':'Images/Cards/WomanYellingAtACat_meme.jpg',
+  'bu_u5':'Images/Cards/Leave Britney Alone.jpg','bu_u6':'Images/Cards/surgury-on-grape.jpg',
+  'bu_u7':'Images/Cards/chocolate-rain.png','bu_u8':'Images/Cards/Zombie Kid Likes Turtles.jpg',
+  'bu_u9':'Images/Cards/Keyboard_cat.jpg','bu_u10':'Images/Cards/Numa.jpg',
+  'bu_u11':'Images/Cards/shooting star.png','bu_u12':'Images/Cards/Rickroll.jpg',
+  'bu_u13':'Images/Cards/gabe-the-dog-image.jpg',
+  'bu_r1':'Images/Cards/John Cena.jpg','bu_r2':'Images/Cards/Just do it.jpg',
+  'bu_r3':'Images/Cards/Leeroy.jpg','bu_r4':'Images/Cards/El Ristas.jpg',
+  'bu_r5':'Images/Cards/ZeEnd.jpg','bu_r6':'Images/Cards/overly-attached-girlfriend.jpg',
+  'bu_r7':'Images/Cards/evil-kermit.jpg',
+};
+
+const SAVE_KEY      = 'nugget_aligner_v3';
+const ICON_SAVE_KEY = 'nugget_icon_pos_v1';
+
+let currentIndex = 0, currentView = 'single';
+let transforms = {};
+let iconPos = {top:59.5, right:9.0, size:6.0};
+
+function defaultT(){ return {x:0,y:0,scale:1.0,status:'default'}; }
+
+function loadSession(){
+  try{
+    const s=localStorage.getItem(SAVE_KEY);
+    if(s){ transforms=JSON.parse(s); CARDS.forEach(c=>{if(!transforms[c.id])transforms[c.id]=defaultT();});
+      const n=Object.values(transforms).filter(t=>t.status==='done').length;
+      document.getElementById('session-info').textContent=`Session restored · ${n} done`; }
+    else { CARDS.forEach(c=>{transforms[c.id]=defaultT();}); }
+  }catch(e){ CARDS.forEach(c=>{transforms[c.id]=defaultT();}); }
+
+  try{
+    const ip=localStorage.getItem(ICON_SAVE_KEY);
+    if(ip) iconPos={...iconPos,...JSON.parse(ip)};
+  }catch(e){}
+}
+
+function persist(){ localStorage.setItem(SAVE_KEY,JSON.stringify(transforms)); }
+function persistIconPos(){ localStorage.setItem(ICON_SAVE_KEY,JSON.stringify(iconPos)); }
+
+// ── Effect labels ──
+function effectLabel(card){
+  const p=card.params||{};
+  switch(card.archetype){
+    case 'INSTANT_BURST':    return `Burst: ${p.apsSeconds}s of APS`;
+    case 'TEMP_CLICK_MULT':  return `${p.mult}× clicks · ${p.duration}s`;
+    case 'TEMP_APS_MULT':    return `${p.mult}× APS · ${p.duration}s`;
+    case 'COIN_RAIN':        return `Coin rain · ${p.coins}`;
+    case 'TARGET_CHASE':     return `Chase · ${p.targets} target${(p.targets||1)>1?'s':''}`;
+    case 'GAMBLE':           return `Gamble · 50/50`;
+    case 'AUTO_COLLECT':     return `Auto-click ×${p.mult} · ${p.duration}s`;
+    case 'PRECISION':        return `Precision · ${p.mult}× · ${p.duration}s`;
+    case 'SCREEN_GAG':       return `Pity ${p.pityEAS} EAS`;
+    case 'RHYTHM':           return `Rhythm · up to ${p.maxMult}×`;
+    case 'FIELD_THEME':      return `+${((p.mult||0)*100).toFixed(0)}% mult (Field)`;
+    case 'GLOBAL_MULT':      return `+${((p.mult||0)*100).toFixed(0)}% global`;
+    case 'PASSIVE_APC_PCT':  return `+${((p.pct||0)*100).toFixed(0)}% click power`;
+    case 'PASSIVE_APS_PCT':  return `+${((p.pct||0)*100).toFixed(0)}% APS`;
+    case 'TIMED_DROP':       return `Bonus every ${p.interval}s`;
+    case 'IDLE_DRIP':        return `Idle · ${((p.rate||0)*100).toFixed(1)}%/s`;
+    case 'COST_REDUCTION':   return `-${((p.reduce||0)*100).toFixed(0)}% upgrade cost`;
+    case 'PACK_LUCK':        return `+${((p.rareBonus||0)*100).toFixed(0)}% rare pull`;
+    case 'BIGGER_TARGET':    return `Bigger nugget · +${((p.apcBonus||0)*100).toFixed(0)}% APC`;
+    case 'EVENT_SOFTENER':   return `Boss drain ×${p.drainMult}`;
+    case 'SCALING_OVER_TIME':return `+1%/min APC (cap ${((p.capPct||0)*100).toFixed(0)}%)`;
+    case 'CRIT_CHANCE':      return `Every ${p.everyN}th click = ${p.mult}×`;
+    case 'MOOD_SWING':       return `Rotating buff · ${p.cycleSec}s`;
+    default: return '';
+  }
+}
+function typeHTML(card){
+  const c={Field:'#ffd700',Binder:'#03a9f4',Burn:'#ff6622'};
+  const i={Field:'⭐',Binder:'📂',Burn:'🔥'};
+  return `<span style="color:${c[card.type]}">${i[card.type]} ${card.type.toUpperCase()}</span>`;
+}
+
+// ── Build icon badge HTML (px-based, uses current iconPos) ──
+function buildIconBadge(card, cw, ch){
+  const src    = RARITY_ICON[card.rarity];
+  const border = RARITY_BORDER[card.rarity] || '#888';
+  if(!src) return '';
+  const sizePx  = Math.round(cw * iconPos.size  / 100);
+  const topPx   = Math.round(ch * iconPos.top   / 100) - Math.round(sizePx / 2);
+  const rightPx = Math.round(cw * iconPos.right / 100);
+  return `<div style="
+    position:absolute;
+    top:${topPx}px;
+    right:${rightPx}px;
+    width:${sizePx}px;
+    height:${sizePx}px;
+    border-radius:50%;
+    overflow:hidden;
+    border:${Math.max(1,Math.round(sizePx*0.08))}px solid ${border};
+    z-index:3;
+    flex-shrink:0;
+  "><img src="${src}" alt="${card.rarity}" style="width:100%;height:100%;object-fit:cover;display:block;"></div>`;
+}
+
+// ── Build card HTML ──
+function buildCard(card, cw, ch, aw, ra, interactive){
+  const imgSrc=CARD_IMAGES[card.id];
+  const t=transforms[card.id]||defaultT();
+  const tf=`translate(${t.x}%,${t.y}%) scale(${t.scale})`;
+  const fontSize = cw < 200 ? '0.38rem' : '0.9rem';
+  const nameFontSize = cw < 200 ? '0.55rem' : '0.95rem';
+
+  const artContent = imgSrc
+    ? `<img class="meme-img" src="${imgSrc}" alt="" draggable="false" style="transform:${tf}" data-id="${card.id}">`
+    : `<div class="emoji-fallback" style="font-size:${cw<200?'1.8rem':'3.5rem'}">${card.emoji}</div>`;
+
+  return `<div class="card-face rarity-${card.rarity}" style="width:${cw}px;height:${ch}px" data-id="${card.id}">
+    <div class="art-window" style="top:${aw.top}px;left:${aw.left}px;width:${aw.w}px;height:${aw.h}px;${interactive?'cursor:grab':''}" data-id="${card.id}">
+      ${artContent}
+    </div>
+    <img class="cf-template" src="Images/Cards/card-template.png" alt="">
+    ${buildIconBadge(card, cw, ch)}
+    <div class="cf-rules-area" style="top:${ra.top}px;left:${ra.left}px;width:${ra.w}px;height:${ra.h}px;padding:2px 4px;">
+      <div class="cf-name" style="font-size:${nameFontSize}">${card.name}</div>
+      <div class="cf-type" style="font-size:${cw<200?'0.38rem':'0.52rem'}">${typeHTML(card)}</div>
+      <div class="cf-desc" style="font-size:${cw<200?'0.32rem':'0.46rem'}">${card.desc}</div>
+      ${card.flavor ? `<hr class="cf-flavor-sep"><div class="cf-flavor" style="font-size:${cw<200?'0.28rem':'0.4rem'}">${card.flavor}</div>` : ''}
+    </div>
+  </div>`;
+}
+
+// ── Single view ──
+function renderSingle(){
+  const card=CARDS[currentIndex], imgSrc=CARD_IMAGES[card.id], t=transforms[card.id];
+  document.getElementById('card-stage').innerHTML=buildCard(card,SINGLE_W,SINGLE_H,AW,RA,!!imgSrc);
+  document.getElementById('card-counter').textContent=`${currentIndex+1} / ${CARDS.length}`;
+  document.getElementById('ctrl-title').textContent=card.name;
+  document.getElementById('ctrl-sub').textContent=`${card.type} · ${card.rarity} · ${card.id}`;
+  document.getElementById('ctrl-status').innerHTML=`<span class="status-badge ${t.status}">${t.status==='done'?'✓ Done':'○ Default'}</span>`;
+  const sliders=document.getElementById('ctrl-sliders');
+  const noImg=document.getElementById('no-img-note');
+  if(imgSrc){ sliders.style.display=''; noImg.style.display='none'; syncSliders(t); }
+  else       { sliders.style.display='none'; noImg.style.display=''; }
+  syncIconSliders();
+  attachDrag();
+}
+
+function syncSliders(t){
+  document.getElementById('sl-scale').value=Math.round(t.scale*100);
+  document.getElementById('sl-x').value=t.x;
+  document.getElementById('sl-y').value=t.y;
+  document.getElementById('val-scale').textContent=t.scale.toFixed(2)+'×';
+  document.getElementById('val-x').textContent=t.x.toFixed(1)+'%';
+  document.getElementById('val-y').textContent=t.y.toFixed(1)+'%';
+}
+
+function syncIconSliders(){
+  document.getElementById('sl-itop').value=iconPos.top;
+  document.getElementById('sl-iright').value=iconPos.right;
+  document.getElementById('sl-isize').value=iconPos.size;
+  document.getElementById('val-itop').textContent=iconPos.top.toFixed(1)+'%';
+  document.getElementById('val-iright').textContent=iconPos.right.toFixed(1)+'%';
+  document.getElementById('val-isize').textContent=iconPos.size.toFixed(1)+'%';
+}
+
+function navigate(dir){
+  currentIndex=(currentIndex+dir+CARDS.length)%CARDS.length;
+  renderSingle();
+}
+
+function sliderChange(axis,val){
+  const t=transforms[CARDS[currentIndex].id];
+  if(axis==='scale') t.scale=Math.round(val*100)/100;
+  else if(axis==='x') t.x=Math.round(val*10)/10;
+  else if(axis==='y') t.y=Math.round(val*10)/10;
+  syncSliders(t);
+  applyTF(CARDS[currentIndex].id);
+  persist();
+}
+
+// ── Icon position controls ──
+function iconSliderChange(axis, val){
+  iconPos[axis] = Math.round(val * 10) / 10;
+  syncIconSliders();
+  persistIconPos();
+  // Re-render just the badge without rebuilding the whole card
+  const stage = document.getElementById('card-stage');
+  const existing = stage.querySelector('[data-icon-badge]');
+  if(existing) existing.remove();
+  const cardEl = stage.querySelector('.card-face');
+  if(cardEl){
+    cardEl.insertAdjacentHTML('beforeend', buildIconBadge(CARDS[currentIndex], SINGLE_W, SINGLE_H).replace('<div style=', '<div data-icon-badge="1" style='));
+  }
+}
+
+function resetIconPos(){
+  iconPos = {top:59.5, right:9.0, size:6.0};
+  syncIconSliders();
+  persistIconPos();
+  renderSingle();
+}
+
+function resetCard(){
+  transforms[CARDS[currentIndex].id]=defaultT();
+  renderSingle(); persist();
+}
+function markDone(){
+  transforms[CARDS[currentIndex].id].status='done';
+  persist(); navigate(1);
+}
+
+function applyTF(id){
+  const t=transforms[id];
+  const img=document.querySelector(`.meme-img[data-id="${id}"]`);
+  if(img) img.style.transform=`translate(${t.x}%,${t.y}%) scale(${t.scale})`;
+}
+
+// ── Drag on art window ──
+let _drag=false, _id=null, _sx=0,_sy=0,_ox=0,_oy=0,_aw=1,_ah=1;
+
+function attachDrag(){
+  const win=document.querySelector('#card-stage .art-window');
+  if(!win||!CARD_IMAGES[CARDS[currentIndex].id]) return;
+  win.addEventListener('mousedown',e=>{
+    if(e.button!==0) return;
+    e.preventDefault();
+    _drag=true; _id=win.dataset.id;
+    const t=transforms[_id];
+    _sx=e.clientX; _sy=e.clientY; _ox=t.x; _oy=t.y;
+    _aw=win.offsetWidth||1; _ah=win.offsetHeight||1;
+    win.style.cursor='grabbing';
+  });
+  win.addEventListener('wheel',e=>{
+    e.preventDefault();
+    const t=transforms[CARDS[currentIndex].id];
+    t.scale=Math.max(1.0,Math.min(5.0,Math.round((t.scale+(e.deltaY>0?-0.08:0.08))*100)/100));
+    syncSliders(t); applyTF(CARDS[currentIndex].id);
+    persist();
+  },{passive:false});
+}
+
+document.addEventListener('mousemove',e=>{
+  if(!_drag||!_id) return;
+  const t=transforms[_id];
+  t.x=Math.max(-200,Math.min(200,Math.round((_ox+(e.clientX-_sx)/_aw*100)*10)/10));
+  t.y=Math.max(-200,Math.min(200,Math.round((_oy+(e.clientY-_sy)/_ah*100)*10)/10));
+  if(document.getElementById('sl-x')){ document.getElementById('sl-x').value=t.x; document.getElementById('sl-y').value=t.y;
+    document.getElementById('val-x').textContent=t.x.toFixed(1)+'%'; document.getElementById('val-y').textContent=t.y.toFixed(1)+'%'; }
+  applyTF(_id);
+});
+document.addEventListener('mouseup',()=>{
+  if(_drag){ _drag=false; persist(); const w=document.querySelector('#card-stage .art-window'); if(w) w.style.cursor='grab'; }
+});
+
+// ── Gallery ──
+function renderGallery(){
+  const done=Object.values(transforms).filter(t=>t.status==='done').length;
+  document.getElementById('gallery-header').textContent=`All Cards — ${done} / ${CARDS.length} done`;
+  const grid=document.getElementById('gallery-grid'); grid.innerHTML='';
+  CARDS.forEach((card,idx)=>{
+    const has=!!CARD_IMAGES[card.id], t=transforms[card.id];
+    const sc=!has?'no-img':t.status==='done'?'status-done':'status-default';
+    const wrap=document.createElement('div');
+    wrap.className=`gallery-card-wrap ${sc}`; wrap.title=card.name;
+    wrap.innerHTML=buildCard(card,GALLERY_W,GALLERY_H,GAW,GRA,false)+`<div class="gallery-label">${card.name}</div>`;
+    wrap.addEventListener('click',()=>{ currentIndex=idx; setView('single'); });
+    grid.appendChild(wrap);
+  });
+}
+
+// ── View switching ──
+function setView(v){
+  currentView=v;
+  document.getElementById('single-view').style.display =v==='single'?'flex':'none';
+  document.getElementById('gallery-view').style.display=v==='gallery'?'block':'none';
+  document.getElementById('btn-single').classList.toggle('active',v==='single');
+  document.getElementById('btn-gallery').classList.toggle('active',v==='gallery');
+  if(v==='single') renderSingle();
+  if(v==='gallery') renderGallery();
+}
+
+// ── Save JSON ──
+function saveJSON(){
+  const done=Object.values(transforms).filter(t=>t.status==='done').length;
+  const out={
+    _generated: new Date().toISOString(),
+    _instructions: [
+      'Apply iconPosition values to .cf-set-symbol-wrap in index.html:',
+      '  top: X% of card height (translateY(-50%) is already applied)',
+      '  right: X% of card width',
+      '  width/height: X% of card width',
+      'Card image transforms go into CARD_IMAGE_TRANSFORM in game.js.'
+    ].join(' '),
+    iconPosition: {
+      topPct:   iconPos.top,
+      rightPct: iconPos.right,
+      sizePct:  iconPos.size,
+      cssTop:   `${iconPos.top}%`,
+      cssRight: `${iconPos.right}%`,
+      cssWidth: `clamp(18px, ${(iconPos.size * 0.4).toFixed(1)}vw, ${Math.round(iconPos.size * 5)}px)`,
+    },
+    cards: {}
+  };
+  CARDS.forEach(card=>{
+    const t=transforms[card.id]||defaultT();
+    out.cards[card.id]={name:card.name,type:card.type,rarity:card.rarity,image:CARD_IMAGES[card.id]||null,x:t.x,y:t.y,scale:t.scale,status:t.status};
+  });
+  const blob=new Blob([JSON.stringify(out,null,2)],{type:'application/json'});
+  const url=URL.createObjectURL(blob); const a=document.createElement('a');
+  a.href=url; a.download='card-alignments.json'; a.click(); URL.revokeObjectURL(url);
+}
+
+loadSession();
+setView('single');
+</script>
+</body>
+</html>
