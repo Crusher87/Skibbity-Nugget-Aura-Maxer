@@ -269,15 +269,15 @@ const BATCH_TESTS = {
     const charlie = await page.evaluate(() => CARD_BY_ID.get('bu_c8').params.mult);   // 3 since B4
     check(`B1 Charlie during Rickroll: ${2 + charlie}× then back to 3× (no downgrade)`, r === 2 + charlie && r2.m === 3 && r2.rick > 55, JSON.stringify({ r, r2 }));
 
-    // Rickroll then Leroy pays 900 base EAS (Rickroll still active from above)
+    // Rickroll then Leroy pays its rewardEAS in base EAS (Rickroll still active from above)
     await page.evaluate(() => { devGiveCard('bu_r3'); G.burnCooldownUntil = 0; activateBurn('bu_r3'); });
     r = await page.evaluate(() => {
       const t = document.querySelector('#burn-fx .burn-target');
       const base = computeBaseEAS(), a0 = G.aura;
       t.click();
-      return { eas: (G.aura - a0) / base, rick: apsBuffMult() };
+      return { eas: (G.aura - a0) / base, rick: apsBuffMult(), want: CARD_BY_ID.get('bu_r3').params.rewardEAS };
     });
-    check('B1 Rickroll then Leroy pays 900 EAS (base, not ×3)', near(r.eas, 900) && r.rick === 3, JSON.stringify(r));
+    check(`B1 Rickroll then Leroy pays ${r.want} EAS (base, not ×3)`, near(r.eas, r.want) && r.rick === 3, JSON.stringify(r));
     // Combo 1: Rickroll + El Risitas pays 600 base EAS
     r = await page.evaluate(() => {
       devGiveCard('bu_r4'); G.burnCooldownUntil = 0;
@@ -615,9 +615,9 @@ const BATCH_TESTS = {
       let a0 = G.aura; document.querySelector('#burn-fx .burn-target').click();
       const first = (G.aura - a0) / base, kekAfterOne = G.kekCoins - k0;
       for (let i = 0; i < 24; i++) { await new Promise(res => setTimeout(res, 20)); document.querySelector('#burn-fx .burn-target')?.click(); }
-      return { first, kekAfterOne, kek: G.kekCoins - k0, total: (G.aura - a0) / base };
+      return { first, kekAfterOne, kek: G.kekCoins - k0, total: (G.aura - a0) / base, want: CARD_BY_ID.get('bu_r5').params.rewardEAS };
     });
-    check('B3 End of Ze World: 36 EAS per missile, +10 Kek only when all 25 die', Math.abs(r.first - 36) < 0.5 && r.kekAfterOne === 0 && r.kek === 10 && r.total > 899, JSON.stringify(r));
+    check(`B3 End of Ze World: ${r.want / 25} EAS per missile, +10 Kek only when all 25 die`, Math.abs(r.first - r.want / 25) < 0.5 && r.kekAfterOne === 0 && r.kek === 10 && r.total > r.want - 1, JSON.stringify(r));
 
     // Numa: pulses away from the centre, gone after the 0.6 s hit window
     await use(['bu_u10']);
@@ -793,6 +793,57 @@ const BATCH_TESTS = {
     check('B5 Chocolate Rain: 15 × 6 = 90 EAS + 5 Kek', near(r.eas, 90) && r.kek === 5, JSON.stringify(r));
     await sleep(500);
     check('B5: no page/console errors', errs.length === 0, errs.slice(0, 8).join(' | '));
+    await ctx.close();
+  },
+
+  async B6(browser) {
+    const { ctx, page, errs } = await openPage(browser);
+    await midState(page);
+    const c = await nuggetCentre(page);
+    const near = (a, b, tol = 0.02) => Math.abs(a - b) <= tol * Math.max(1, Math.abs(b));
+    await noPassive(page);
+    let r;
+    // John Cena: every landed click banks 8 EAS up to 750 (on top of 7× clicks)
+    r = await page.evaluate(([x, y]) => {
+      G.clickBuffs = []; devGiveCard('bu_r1'); G.burnCooldownUntil = 0; activateBurn('bu_r1');
+      const base = computeBaseEAS(), cv = window._cv(), out = [];
+      for (const n of [50, 50, 10]) { const a0 = G.aura; for (let i = 0; i < n; i++) doClick(x, y); out.push(+((G.aura - a0 - n * 7 * cv) / base).toFixed(2)); }
+      G.clickBuffs = [];
+      return out;
+    }, [c.x, c.y]);
+    check('B6 John Cena: 50 / 50 / 10 clicks bank 400 / 350 / 0 EAS (cap 750)', near(r[0], 400) && near(r[1], 350) && near(r[2], 0), r.join(' / '));
+    // Shia: 8 beats at random spots, perfect 800, 0 hits 0
+    await page.evaluate(() => {
+      window._pulsePos = [];
+      window._posObs = new MutationObserver(ms => ms.forEach(m => m.addedNodes.forEach(n => { if (n instanceof HTMLElement && n.textContent === '💥' && n.style.zIndex === '600') window._pulsePos.push([parseFloat(n.style.left), parseFloat(n.style.top), n.style.left.endsWith('vw')]); })));
+      window._posObs.observe(document.body, { childList: true });
+    });
+    r = await playBurn(page, 'bu_r2', 'hit', 13000);
+    const pos = await page.evaluate(() => { window._posObs.disconnect(); return window._pulsePos; });
+    const spread = pos.length === 8 && pos.every(([x, y, vw]) => vw && x >= 25 && x <= 75 && y >= 25 && y <= 70) && new Set(pos.map(p => Math.round(p[0]))).size > 1;
+    check('B6 Shia: 8 beats at random 25–75vw / 25–70vh spots, perfect run 800 EAS', near(r.eas, 800) && spread, JSON.stringify({ r, pos: pos.map(p => p.slice(0, 2).map(Math.round).join(',')) }));
+    r = await playBurn(page, 'bu_r2', 'miss', 13000);
+    check('B6 Shia: 0 hits pays 0', near(r.eas, 0), JSON.stringify(r));
+    // Leroy 700; End of Ze World 30 per missile, 750 + 10 Kek for all 25
+    r = await playBurn(page, 'bu_r3', 'hit', 800);
+    check('B6 Leroy Jenkins: 700 EAS', near(r.eas, 700), JSON.stringify(r));
+    r = await playBurn(page, 'bu_r5', 'hit', 3000);
+    check('B6 End of Ze World: 25 × 30 = 750 EAS + 10 Kek', near(r.eas, 750) && r.kek === 10, JSON.stringify(r));
+    // Combo 9: Boyfriend echo + End of Ze World — nugget clicks (and their echoes) never hit missiles
+    r = await page.evaluate(([x, y]) => {
+      G.clickBuffs = [];
+      for (const id of ['bu_c4', 'bu_r5']) { devGiveCard(id); G.burnCooldownUntil = 0; activateBurn(id); }
+      const t0 = document.querySelectorAll('#burn-fx .burn-target').length, k0 = G.kekCoins;
+      const base = computeBaseEAS(), cv = window._cv(), a0 = G.aura;
+      for (let i = 0; i < 50; i++) $nuggetContainer.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: x, clientY: y }));
+      const t1 = document.querySelectorAll('#burn-fx .burn-target').length;
+      document.querySelectorAll('#burn-fx .burn-target').forEach(t => t.remove());
+      G.clickBuffs = [];
+      return { targetsBefore: t0, targetsAfter: t1, kek: G.kekCoins - k0, extraEAS: +((G.aura - a0 - 100 * cv) / base).toFixed(2) };
+    }, [c.x, c.y]);
+    check('B6 combo 9 (Boyfriend echo + End of Ze World): echo never reaches a missile, only the echo D6 (≤ 30 EAS)', r.targetsBefore === 1 && r.targetsAfter === 1 && r.extraEAS <= 30.01, JSON.stringify(r));
+    await sleep(500);
+    check('B6: no page/console errors', errs.length === 0, errs.slice(0, 8).join(' | '));
     await ctx.close();
   },
 };
