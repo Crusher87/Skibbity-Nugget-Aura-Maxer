@@ -14,6 +14,9 @@ A first pass over `game.js` (commit `5b3e14b`) already turned these up. Reviewer
 
 > **Overlap with the cleanup PR (branch `cleanup-and-fixes`).** That PR is expected to: wire up `pauseBoss`, `deadCenterOnly`, `doubleNext`, `gagDuration`, `fluctuate`, `echoOffset`; make Success Kid's `rareBonus`/`mythicBonus` apply in `pullCard()`; remove Chuck Norris's double-counted crit EV from `getBinderStats()`; pay RHYTHM cards by their own rarity budget (Shia was paid as Uncommon); stop a weaker click buff from lowering a stronger one; and make Gabe's multi-copy use 2^N − 1. Run the review **after** it merges, and for items it covers, verify the new behaviour instead of re-reporting the old bug. Note that Gabe going exponential makes the multi-copy exploit in 0.2 bigger, not smaller.
 
+### 0.0 Cards Curtis already reworked by hand
+Curtis remembers doing **Nyan Cat** and "one or two at the beginning of the binder". The code agrees: Nyan Cat (f3), Shrek (bi_c1, added drain reduction), Harambe (bi_c2, faster Kek drops + flat APC) and Philosoraptor (bi_c4, now pays Kek) all differ from the BALANCE_PLAN audit and look hand-tuned. Moth and Lamp and This is Fine were also reworked at some point (their `cards.csv` text is older than the code). For these, keep Curtis's design intent: check that the numbers and text hold up, and don't propose a redesign unless something is broken.
+
 ### 0.1 Card text promises things the code never does
 These params are defined in `CARD_LIBRARY` but no code reads them:
 
