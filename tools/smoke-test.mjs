@@ -237,7 +237,8 @@ const BATCH_TESTS = {
     });
     await sleep(400);
     r2 = await page.evaluate(() => ({ m: apsBuffMult(), rick: G.apsBuffs.find(b => b.src === 'bu_u12')?.t }));
-    check('B1 Charlie during Rickroll: 3.5× then back to 3× (no downgrade)', r === 3.5 && r2.m === 3 && r2.rick > 55, JSON.stringify({ r, r2 }));
+    const charlie = await page.evaluate(() => CARD_BY_ID.get('bu_c8').params.mult);   // 3 since B4
+    check(`B1 Charlie during Rickroll: ${2 + charlie}× then back to 3× (no downgrade)`, r === 2 + charlie && r2.m === 3 && r2.rick > 55, JSON.stringify({ r, r2 }));
 
     // Rickroll then Leroy pays 900 base EAS (Rickroll still active from above)
     await page.evaluate(() => { devGiveCard('bu_r3'); G.burnCooldownUntil = 0; activateBurn('bu_r3'); });
@@ -261,6 +262,7 @@ const BATCH_TESTS = {
     // Combo 6: frenzy + SWK + Chipmunk + Chuck crit ≤ CLICK_TOTAL_CAP × frenzy
     r = await page.evaluate(([x, y]) => {
       for (const id of ['bu_c11', 'bu_c14']) { devGiveCard(id); G.burnCooldownUntil = 0; activateBurn(id); }
+      G.clickBuffs.forEach(b => { b.easPerClick = 0; });   // multiplier check only (B4 D6 bonus is flat, B4 checks it)
       G.binderSlots = ['bi_r1', null, null, null, null]; G.critClickCounter = 9; G.frenzyActive = true;
       const bs = getBinderStats();
       const base = (G.auraPerClick + bs.addApc) * (G.allAuraMult + bs.addMult + getFieldMult());
@@ -275,6 +277,7 @@ const BATCH_TESTS = {
       EVENTS[1].reward(G);
       G.clickBuffs[0].t = 3;
       devGiveCard('bu_c11'); G.burnCooldownUntil = 0; activateBurn('bu_c11');
+      G.clickBuffs.forEach(b => { b.easPerClick = 0; });   // multiplier check only
       return { mult: clickBuffMult(true), gy: G.clickBuffs.find(b => b.src === 'gyatt').t };
     });
     check('B1 Gyatt then SWK: Gyatt timer not extended, buffs 101×', r.mult === 101 && r.gy <= 3, JSON.stringify(r));
@@ -657,6 +660,76 @@ const BATCH_TESTS = {
 
     await sleep(1000);
     check('B3: no page/console errors', errs.length === 0, errs.slice(0, 8).join(' | '));
+    await ctx.close();
+  },
+
+  async B4(browser) {
+    const { ctx, page, errs } = await openPage(browser);
+    await midState(page);
+    const c = await nuggetCentre(page);
+    const near = (a, b, tol = 0.02) => Math.abs(a - b) <= tol * Math.max(1, Math.abs(b));
+    // No passive income while measuring (gameLoop reads apsBuffMult), no frenzy from synthetic clicks
+    await page.evaluate(() => {
+      window._realApsBuffMult = apsBuffMult; apsBuffMult = () => 0; G.frenzyCooldown = 1e9;
+      window._cv = () => { const bs = getBinderStats(); return (G.auraPerClick + bs.addApc) * (G.allAuraMult + bs.addMult + getFieldMult()); };
+    });
+    // Auto-click cards: D6 cap + clicks × mult × click value, in EAS
+    for (const id of ['bu_c3', 'bu_c15', 'bu_c12']) {
+      const w = await page.evaluate((id) => { window._a0 = G.aura; devGiveCard(id); G.burnCooldownUntil = 0; activateBurn(id); return CARD_BY_ID.get(id).params.duration; }, id);
+      await sleep(w * 1000 + 600);
+      const r = await page.evaluate((id) => {
+        const p = CARD_BY_ID.get(id).params, base = computeBaseEAS();
+        return { eas: (G.aura - window._a0) / base, want: p.capEAS + p.clicks * p.mult * window._cv() / base, d6: p.capEAS };
+      }, id);
+      check(`B4 ${id}: auto-clicks pay ${r.d6} EAS D6 + click value`, near(r.eas, r.want), JSON.stringify(r));
+    }
+    // Manual-click buffs: D6 per click up to the cap
+    const clickBuff = (id, n) => page.evaluate(([id, n, x, y]) => {
+      G.clickBuffs = []; devGiveCard(id); G.burnCooldownUntil = 0; activateBurn(id);
+      const p = CARD_BY_ID.get(id).params, base = computeBaseEAS(), cv = window._cv();
+      const a0 = G.aura; for (let i = 0; i < n; i++) doClick(x, y);
+      const clicks = p.echoClick ? 2 * n * cv : n * p.mult * cv;
+      const out = { d6: (G.aura - a0 - clicks) / base, cap: p.capEAS };
+      G.clickBuffs = [];
+      return out;
+    }, [id, n, c.x, c.y]);
+    for (const [id, n] of [['bu_c4', 50], ['bu_c4', 80], ['bu_c11', 90], ['bu_c14', 30], ['bu_c14', 60]]) {
+      const r = await clickBuff(id, n);
+      check(`B4 ${id}: ${n} clicks bank ${r.cap} EAS (cap)`, near(r.d6, r.cap), JSON.stringify(r));
+    }
+    // Charlie / Dream: APS buff value + duration (+ Dream's freeze)
+    let r = await page.evaluate(() => {
+      apsBuffMult = window._realApsBuffMult;
+      const out = {};
+      for (const id of ['bu_c8', 'bu_c9']) { G.apsBuffs = []; devGiveCard(id); G.burnCooldownUntil = 0; activateBurn(id); out[id] = [apsBuffMult(), Math.round(G.apsBuffs[0].t)]; }
+      out.freeze = Math.round(G.bossPauseTimer);
+      G.apsBuffs = []; G.bossPauseTimer = 0; apsBuffMult = () => 0;
+      return out;
+    });
+    check('B4 Charlie 3×/20 s, Dream 2×/30 s + 30 s boss freeze', r.bu_c8[0] === 3 && r.bu_c8[1] === 20 && r.bu_c9[0] === 2 && r.bu_c9[1] === 30 && r.freeze === 30, JSON.stringify(r));
+    // Ravioli: 8 × 7.5 EAS
+    await page.evaluate(() => { window._a0 = G.aura; devGiveCard('bu_c13'); G.burnCooldownUntil = 0; activateBurn('bu_c13'); document.querySelectorAll('#burn-fx .burn-coin.motion-fade').forEach(el => el.click()); });
+    r = await page.evaluate(() => (G.aura - window._a0) / computeBaseEAS());
+    check('B4 Ravioli: 8 pieces × 7.5 = 60 EAS', near(r, 60), r.toFixed(2));
+    // Dentist: 45 EAS after the 6 s gag
+    await page.evaluate(() => { window._a0 = G.aura; devGiveCard('bu_c16'); G.burnCooldownUntil = 0; activateBurn('bu_c16'); });
+    await sleep(6400);
+    r = await page.evaluate(() => (G.aura - window._a0) / computeBaseEAS());
+    check('B4 Dentist: 45 EAS', near(r, 45), r.toFixed(2));
+    // All Your Base counts clicks: 100 → floor 30, 180 → 45, 300 → cap 60
+    r = await page.evaluate(() => [100, 180, 300].map(n => {
+      const now = Date.now(); G.recentClickTimestamps = Array.from({ length: n }, (_, i) => now - i * 100);
+      const a0 = G.aura; devGiveCard('bu_c18'); G.burnCooldownUntil = 0; activateBurn('bu_c18');
+      return +((G.aura - a0) / computeBaseEAS()).toFixed(2);
+    }));
+    check('B4 All Your Base: 100 / 180 / 300 clicks → 30 / 45 / 60 EAS', near(r[0], 30) && near(r[1], 45) && near(r[2], 60), r.join(' / '));
+    // Vitas alone wins a boss fight in 3 s
+    await page.evaluate(() => { apsBuffMult = window._realApsBuffMult; startBossFight(); window._t0 = Date.now(); devGiveCard('bu_c12'); G.burnCooldownUntil = 0; activateBurn('bu_c12'); });
+    await page.waitForFunction(() => !G.boss, null, { timeout: 8000 }).catch(() => { });
+    r = await page.evaluate(() => ({ s: (Date.now() - window._t0) / 1000, won: document.getElementById('log-content').textContent.includes('Skibidi defeated') }));
+    check('B4 Vitas: 20 piercing hits win the boss within ~3 s', r.won && r.s < 3.6, JSON.stringify(r));
+    await sleep(500);
+    check('B4: no page/console errors', errs.length === 0, errs.slice(0, 8).join(' | '));
     await ctx.close();
   },
 };

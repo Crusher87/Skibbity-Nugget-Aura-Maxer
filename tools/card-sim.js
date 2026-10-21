@@ -202,11 +202,11 @@ const BURN_MODELS = {
   // EFFECT_HANDLERS.INSTANT_BURST — pays computeBaseEAS() × seconds.
   INSTANT_BURST(card, p, G, h) {
     const base = computeBaseEAS(G);
-    if (p.recentClicksAPC) {                         // All Your Base
+    if (p.recentClicksAPC) {                         // All Your Base: counts clicks, clicksPerSecond clicks = 1 s
       const clicks = CPS * 30;                        // recentClickTimestamps trimmed to 30s
-      const raw = clicks * clickValue(G);            // note: no clickMultValue in the handler
-      const amt = Math.max(base * (p.floorApsSeconds || 30), Math.min(base * (p.capApsSeconds || 60), raw));
-      return { aura: amt, kek: 0, note: `raw clicks×APC=${(raw / base).toFixed(1)} EAS → ${raw < base * (p.floorApsSeconds || 30) ? 'floor' : 'formula'}` };
+      const raw = clicks / (p.clicksPerSecond || 4);
+      const secs = Math.max(p.floorApsSeconds || 30, Math.min(p.capApsSeconds || 60, raw));
+      return { aura: base * secs, kek: 0, note: `${clicks} clicks / ${p.clicksPerSecond || 4} = ${f(raw, 1)}s → ${secs}s (floor ${p.floorApsSeconds || 30}, cap ${p.capApsSeconds || 60})` };
     }
     if (p.baseApsSeconds) {                          // Ermahgerd: mash in window
       const mashes = Math.floor(CPS * (p.mashWindow || 3) * h);
@@ -262,7 +262,7 @@ const BURN_MODELS = {
       const clicks = CPS * (p.echoDuration || 8);
       return { aura: clicks * clickValue(G) + d6(p, G, clicks), kek: 0, note: `${clicks} echoed clicks` };
     }
-    return { aura: (p.clicks || 10) * (p.mult || 1) * clickValue(G) + d6(p, G, p.clicks || 10), kek: 0, note: `${p.clicks}×${p.mult} click${p.piercesBoss ? ', 12 boss hits' : ''}` };
+    return { aura: (p.clicks || 10) * (p.mult || 1) * clickValue(G) + d6(p, G, p.clicks || 10), kek: 0, note: `${p.clicks}×${p.mult} click${p.piercesBoss ? `, ${p.clicks} boss hits in ${p.duration}s` : ''}` };
   },
   // EFFECT_HANDLERS.SCREEN_GAG — pity payout at end of gag.
   SCREEN_GAG(card, p, G) { return { aura: computeBaseEAS(G) * (p.pityEAS || 30), kek: 0, note: `${p.gagDuration || 3}s gag` }; },

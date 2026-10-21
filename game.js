@@ -144,22 +144,22 @@ const CARD_LIBRARY = [
   // Common (×18) — base budget 30 EAS
   { id: 'bu_c1', name: 'Troll Face', emoji: '😈', type: 'Burn', rarity: 'common', desc: 'A troll face drifts around the screen — click it within 5s for 45 seconds of Aura. Problem?', flavor: 'Problem?', archetype: 'TARGET_CHASE', params: { targets: 1, timeout: 5, rewardEAS: 45 } },
   { id: 'bu_c2', name: 'Is This a Pigeon?', emoji: '🦋', type: 'Burn', rarity: 'common', desc: '6 butterflies zigzag down the screen! Click them for 7.5 seconds of Aura each.', flavor: 'Is this... Aura?', archetype: 'COIN_RAIN', params: { coins: 6, valueEASEach: 7.5, duration: 4, motion: 'sine' } },
-  { id: 'bu_c3', name: 'Spiderman Pointing', emoji: '🕷️', type: 'Burn', rarity: 'common', desc: 'Two Spidermen point at each other — and every Kek Koin on screen gets scooped up! Then auto-clicks the nugget 10 times at 1.5× power.', flavor: 'That Spiderman is clicking MY nugget!', archetype: 'AUTO_COLLECT', params: { clicks: 10, mult: 1.5, duration: 5, autoCollectKekCoins: true } },
-  { id: 'bu_c4', name: 'Distracted Boyfriend', emoji: '👀', type: 'Burn', rarity: 'common', desc: 'Every click spawns a second ghost click 150px away for 8s. Two clicks for the price of one!', flavor: 'One click becomes two. Somehow.', archetype: 'AUTO_COLLECT', params: { echoClick: true, echoDuration: 8, echoOffset: 150 } },
+  { id: 'bu_c3', name: 'Spiderman Pointing', emoji: '🕷️', type: 'Burn', rarity: 'common', desc: 'Spiderman points at every Kek Koin on screen and scoops them up, then auto-clicks the nugget 10 times — each click banks 3.5 seconds of Aura!', flavor: 'That Spiderman is clicking MY nugget!', archetype: 'AUTO_COLLECT', params: { clicks: 10, mult: 1.5, duration: 5, autoCollectKekCoins: true, easPerClick: 3.5, capEAS: 35 } },
+  { id: 'bu_c4', name: 'Distracted Boyfriend', emoji: '👀', type: 'Burn', rarity: 'common', desc: 'For 8s every nugget click counts twice — a ghost click pops up beside it — and also banks 0.6 seconds of Aura (max 30s).', flavor: 'One click becomes two. Somehow.', archetype: 'AUTO_COLLECT', params: { echoClick: true, echoDuration: 8, echoOffset: 150, easPerClick: 0.6, capEAS: 30 } },
   { id: 'bu_c5', name: 'Mocking SpongeBob', emoji: '🧽', type: 'Burn', rarity: 'common', desc: 'AlTeRnAtInG cAsE engaged! Your next 5 nugget Kek Koins are worth DOUBLE. Use up to 3 copies at once for 15 doubles!', flavor: 'yOu CaNt StOp ReAdInG tHiS', archetype: 'KEK_DOUBLE_BUFF', params: { doubleCount: 5, multiKekBonus: true } },
   { id: 'bu_c6', name: 'Bad Luck Brian', emoji: '😬', type: 'Burn', rarity: 'common', desc: 'Typical Bad Luck Brian — but this time he drops 2 Kek Koins! Use up to 3 copies at once: 2 → 6 → 14 coins!', flavor: 'Got a card. It was this one.', archetype: 'KEK_SPAWN', params: { kekCoins: 2, multiKekBonus: true } },
   { id: 'bu_c7', name: 'Epic Fail Guy', emoji: '🤡', type: 'Burn', rarity: 'common', desc: 'He faceplanted so you get a sympathy gift — 30 seconds worth of Aura right now!', flavor: 'FAIL. But like, a productive one.', archetype: 'INSTANT_BURST', params: { apsSeconds: 30 } },
-  { id: 'bu_c8', name: 'Charlie Bit My Finger', emoji: '👶', type: 'Burn', rarity: 'common', desc: 'Ouch! That hurt! Get 1.5× Aura per second for 20s.', flavor: 'And it really hurt!', archetype: 'TEMP_APS_MULT', params: { mult: 1.5, duration: 20 } },
-  { id: 'bu_c9', name: 'Have You Ever Had A Dream', emoji: '💭', type: 'Burn', rarity: 'common', desc: 'Whoa dude... 1.5× Aura per second for 20s AND the Skibidi Toilet freezes! What is real?', flavor: 'That you, um, you had, um, you would, um...', archetype: 'TEMP_APS_MULT', params: { mult: 1.5, duration: 20, pauseBoss: true } },
+  { id: 'bu_c8', name: 'Charlie Bit My Finger', emoji: '👶', type: 'Burn', rarity: 'common', desc: 'Ouch! That hurt! Get 3× Aura per second for 20s.', flavor: 'And it really hurt!', archetype: 'TEMP_APS_MULT', params: { mult: 3, duration: 20 } },
+  { id: 'bu_c9', name: 'Have You Ever Had A Dream', emoji: '💭', type: 'Burn', rarity: 'common', desc: 'Whoa dude... 2× Aura per second for 30s AND the Skibidi Toilet freezes — no drain! Cast it mid-fight.', flavor: 'That you, um, you had, um, you would, um...', archetype: 'TEMP_APS_MULT', params: { mult: 2, duration: 30, pauseBoss: true } },
   { id: 'bu_c10', name: 'Kazoo Kid', emoji: '🎺', type: 'Burn', rarity: 'common', desc: '10 Aura drops fall from the top with heavy gravity — they speed up fast! Catch them before they hit the floor for 4.5 seconds of Aura each.', flavor: 'Wait for it.', archetype: 'COIN_RAIN', params: { coins: 10, valueEASEach: 4.5, duration: 8, motion: 'gravity' } },
-  { id: 'bu_c11', name: 'Star Wars Kid', emoji: '⚔️', type: 'Burn', rarity: 'common', desc: 'Swinging that lightsaber! Get 2× click Aura for 15s.', flavor: 'He trained his whole life for this moment.', archetype: 'TEMP_CLICK_MULT', params: { mult: 2, duration: 15 } },
-  { id: 'bu_c12', name: 'Vitas (Chum Drum)', emoji: '🎤', type: 'Burn', rarity: 'common', desc: '12 ghost clicks at 2.5× power over 5s — they even go through the Skibidi Toilet\'s armor!', flavor: '♪ Iiiii-ii-ii ♪', archetype: 'AUTO_COLLECT', params: { clicks: 12, mult: 2.5, duration: 5, piercesBoss: true } },
-  { id: 'bu_c13', name: 'Pink Guy Ravioli', emoji: '🍝', type: 'Burn', rarity: 'common', desc: '8 pieces of ravioli splat on screen and fade away in 1.5s — click them fast for 5.6 Aura each!', flavor: 'RAAAVIOLI RAAAVIOLI GIVE ME THE FORMUOLI', archetype: 'COIN_RAIN', params: { coins: 8, valueEASEach: 5.6, motion: 'fade', fadeDuration: 1.5 } },
-  { id: 'bu_c14', name: 'Dramatic Chipmunk', emoji: '🐹', type: 'Burn', rarity: 'common', desc: 'DUN DUN DUUUN! Get 5× click Aura for 5 epic seconds!', flavor: 'Dun dun DUUUUN.', archetype: 'TEMP_CLICK_MULT', params: { mult: 5, duration: 5 } },
-  { id: 'bu_c15', name: 'Disaster Girl', emoji: '🔥', type: 'Burn', rarity: 'common', desc: 'Fire sweeps across the screen and automatically collects any nearby Aura drops and targets in its 150px path!', flavor: 'She didn\'t start the fire. Probably.', archetype: 'AUTO_COLLECT', params: { clicks: 10, mult: 3, duration: 4, sweep: true, sweepRadius: 150 } },
-  { id: 'bu_c16', name: 'David After Dentist', emoji: '😵', type: 'Burn', rarity: 'common', desc: 'Is this real life?! Screen goes blurry for 6s and the nugget gets huge — sit through it for 55 Aura!', flavor: 'Is this real life?', archetype: 'SCREEN_GAG', params: { pityEAS: 55, blur: 8, biggerNugget: true, gagDuration: 6 } },
+  { id: 'bu_c11', name: 'Star Wars Kid', emoji: '⚔️', type: 'Burn', rarity: 'common', desc: 'Swinging that lightsaber! 2× click Aura for 15s, and every click banks 0.4 seconds of Aura (max 36s).', flavor: 'He trained his whole life for this moment.', archetype: 'TEMP_CLICK_MULT', params: { mult: 2, duration: 15, easPerClick: 0.4, capEAS: 36 } },
+  { id: 'bu_c12', name: 'Vitas (Chum Drum)', emoji: '🎤', type: 'Burn', rarity: 'common', desc: '20 ghost clicks in 3s, each worth 1.5 seconds of Aura — and every one also hits the Skibidi Toilet. Cast it mid-fight for an instant win!', flavor: '♪ Iiiii-ii-ii ♪', archetype: 'AUTO_COLLECT', params: { clicks: 20, mult: 1.5, duration: 3, piercesBoss: true, easPerClick: 1.5, capEAS: 30 } },
+  { id: 'bu_c13', name: 'Pink Guy Ravioli', emoji: '🍝', type: 'Burn', rarity: 'common', desc: '8 pieces of ravioli splat on screen and fade away in 1.5s — click them fast for 7.5 seconds of Aura each!', flavor: 'RAAAVIOLI RAAAVIOLI GIVE ME THE FORMUOLI', archetype: 'COIN_RAIN', params: { coins: 8, valueEASEach: 7.5, motion: 'fade', fadeDuration: 1.5 } },
+  { id: 'bu_c14', name: 'Dramatic Chipmunk', emoji: '🐹', type: 'Burn', rarity: 'common', desc: 'DUN DUN DUUUN! 5× click Aura for 5 epic seconds, and every click banks 1.2 seconds of Aura (max 36s)!', flavor: 'Dun dun DUUUUN.', archetype: 'TEMP_CLICK_MULT', params: { mult: 5, duration: 5, easPerClick: 1.2, capEAS: 36 } },
+  { id: 'bu_c15', name: 'Disaster Girl', emoji: '🔥', type: 'Burn', rarity: 'common', desc: 'Fire sweeps across the screen for 4s, auto-clicking the nugget 10 times (3 seconds of Aura each) and collecting any falling Aura drops in its path!', flavor: 'She didn\'t start the fire. Probably.', archetype: 'AUTO_COLLECT', params: { clicks: 10, mult: 3, duration: 4, sweep: true, sweepRadius: 150, easPerClick: 3, capEAS: 30 } },
+  { id: 'bu_c16', name: 'David After Dentist', emoji: '😵', type: 'Burn', rarity: 'common', desc: 'Is this real life?! Screen goes blurry for 6s and the nugget gets huge — sit through it for 45 seconds of Aura!', flavor: 'Is this real life?', archetype: 'SCREEN_GAG', params: { pityEAS: 45, blur: 8, biggerNugget: true, gagDuration: 6 } },
   { id: 'bu_c17', name: 'Ermahgerd', emoji: '📚', type: 'Burn', rarity: 'common', desc: 'MASH to power it up! Starts at 15s of Aura. Every click anywhere within 3s adds +3s more, up to 60s max!', flavor: 'ERMAHGERD! BERKS!', archetype: 'INSTANT_BURST', params: { baseApsSeconds: 15, mashWindow: 3, mashBonusSeconds: 3, capApsSeconds: 60 } },
-  { id: 'bu_c18', name: 'All Your Base', emoji: '👾', type: 'Burn', rarity: 'common', desc: 'Rewards you for how much you clicked in the last 30s — gives that many clicks × click power. At least 30s of Aura, max 60s!', flavor: 'All your Aura are belong to us.', archetype: 'INSTANT_BURST', params: { recentClicksAPC: true, floorApsSeconds: 30, capApsSeconds: 60, retroOverlay: 5 } },
+  { id: 'bu_c18', name: 'All Your Base', emoji: '👾', type: 'Burn', rarity: 'common', desc: 'Rewards how much you clicked in the last 30s: every 4 clicks = 1 second of Aura. At least 30s, max 60s!', flavor: 'All your Aura are belong to us.', archetype: 'INSTANT_BURST', params: { recentClicksAPC: true, clicksPerSecond: 4, floorApsSeconds: 30, capApsSeconds: 60, retroOverlay: 5 } },
   // Uncommon (×13) — base budget 120 EAS
   { id: 'bu_u1', name: 'MLG Airhorn', emoji: '📯', type: 'Burn', rarity: 'uncommon', desc: '360 NO-SCOPE! BOOM! The screen shakes and you get 120 seconds of Aura all at once!', flavor: 'GET REKT SON', archetype: 'INSTANT_BURST', params: { apsSeconds: 120, shake: true } },
   { id: 'bu_u2', name: 'Arthur Fist', emoji: '👊', type: 'Burn', rarity: 'uncommon', desc: 'SLAM! Get 120 seconds of Aura right now, your very next click counts double, PLUS the fist pounds out 2 Kek Koins every time!', flavor: 'When you\'re mad but stay calm. For now.', archetype: 'INSTANT_BURST', params: { apsSeconds: 120, doubleNext: true, kekBonus: 2 } },
@@ -1973,17 +1973,13 @@ const EFFECT_HANDLERS = {
     const baseEAS = computeBaseEAS();
 
     // --- All Your Base: recent-activity scalar ---
+    // Counts clicks (not click value): every clicksPerSecond clicks in the last 30s = 1s of base EAS
     if (p.recentClicksAPC) {
-      const bs = getBinderStats();
-      const fieldMult = getFieldMult();
       const now = Date.now();
       G.recentClickTimestamps = G.recentClickTimestamps.filter(t => now - t < 30000);
       const recentClicks = G.recentClickTimestamps.length;
-      const clickVal = (G.auraPerClick + bs.addApc) * (G.allAuraMult + bs.addMult + fieldMult);
-      const raw = recentClicks * clickVal;
-      const floor = baseEAS * (p.floorApsSeconds || 30);
-      const cap = baseEAS * (p.capApsSeconds || 60);
-      const amt = Math.max(floor, Math.min(cap, raw));
+      const secs = Math.max(p.floorApsSeconds || 30, Math.min(p.capApsSeconds || 60, recentClicks / (p.clicksPerSecond || 4)));
+      const amt = baseEAS * secs;
       G.aura += amt;
       spawnParticle(window.innerWidth / 2, window.innerHeight / 2, '+' + fmt(amt));
       if (p.retroOverlay) bodyFxFor('fx-retro', p.retroOverlay * 1000);
@@ -2174,7 +2170,7 @@ const EFFECT_HANDLERS = {
         el.onclick = () => {
           if (el.classList.contains('collected')) return;
           el.classList.add('collected');
-          const amt = computeBaseEAS() * (p.valueEASEach || 5.6);
+          const amt = computeBaseEAS() * (p.valueEASEach || 7.5);
           G.aura += amt;
           const rect = el.getBoundingClientRect();
           spawnParticle(rect.left, rect.top, '+' + fmt(amt));
