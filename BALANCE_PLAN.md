@@ -352,11 +352,17 @@ Differentiation axis: **click pattern** (rapid discrete / echo-mirror / boss-pie
 
 ### Phase 5 — Implementation
 - [x] Economy refactor (computeBaseEAS added; INSTANT_BURST + GAMBLE handlers fixed)
-- [ ] Per-batch implementation (new params need rendering logic)
+- [x] Per-batch implementation (new params need rendering logic)
   - [x] B1 — exploits + one buff list (D1 multi-copy cap, D2 Brain, OAG Kek cap, additive buffs, D6 mechanism, base EAS everywhere): [docs/balance/B1.md](docs/balance/B1.md)
   - [x] B2 — stuck states and lost cards (burn gate + paged bar above the boss, nugget-size counters + Big Chungus, chase timeouts, Moth swap, FWP, pack on purchase, `awardKek`, filter variables): [docs/balance/B2.md](docs/balance/B2.md)
   - [x] B3 — promises and text (PBJ D3 cut, Rickroll crash, Ohio 30%, Kek auto-collect except Sigma, Pepe label/save, Pigeon/Ugandan/End/Numa/Keyboard Cat promises, unit wording, `tools/gen-cards-csv.js`): [docs/balance/B3.md](docs/balance/B3.md)
-- [ ] Pack pull validation
+  - [x] B4 — Burn Commons (D6 values for auto-clicks / echo / click buffs, Vitas boss killer, AYB counts clicks, Charlie 3×, Dream 2×/30 s, Ravioli 7.5, Dentist 45): [docs/balance/B4.md](docs/balance/B4.md)
+  - [x] B5 — Burn Uncommons (linear RHYTHM `perfectEAS`, MLG 160, Britney 240, Surgery D6, Chocolate Rain 6/drop): [docs/balance/B5.md](docs/balance/B5.md)
+  - [x] B6 — Burn Rares (Cena D6, Shia 800 + random pulses, Leroy 700, End 750): [docs/balance/B6.md](docs/balance/B6.md)
+  - [x] B7 — Binders (TIMED_DROP cut, Chungus +40% APC, Harold, Pepe doubled): [docs/balance/B7.md](docs/balance/B7.md)
+  - [x] B8 — Fields (Sigma 70%, Moth 70%, PBJ 30% + bonus every 2nd drop): [docs/balance/B8.md](docs/balance/B8.md)
+  - [x] B9 — packs and Kek (Field 5%, SK luck from Common, dupe refund, price cap 30, new-card pity after 4 dupes; frenzy unchanged): [docs/balance/B9.md](docs/balance/B9.md)
+- [x] Pack pull validation — 1,000-pack sim before/after B9 + set-completion Monte Carlo, and the 10 combo checks: [docs/balance/VALIDATION.md](docs/balance/VALIDATION.md)
 
 ### Phase 6 — Playtest
 - [ ] Early-game session
