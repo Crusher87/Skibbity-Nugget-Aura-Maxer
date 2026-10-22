@@ -595,7 +595,7 @@ const BATCH_TESTS = {
       saveGame();
       return { frozen, a, b, idx: G.moodIndex, logged: document.getElementById('log-content').textContent.includes("Pepe's mood") };
     });
-    check('B3 Pepe: label "Mood: +20% APS (Ns)" → next mode, logged; frozen while unslotted', r.frozen && /^Mood: \+20% APS \(\d+s\)$/.test(r.a) && /^Mood: \+20% APC \(\d+s\)$/.test(r.b) && r.idx === 1 && r.logged, JSON.stringify(r));
+    check('B3 Pepe: label "Mood: +N% APS (Ns)" → next mode, logged; frozen while unslotted', r.frozen && /^Mood: \+\d+% APS \(\d+s\)$/.test(r.a) && /^Mood: \+\d+% APC \(\d+s\)$/.test(r.b) && r.idx === 1 && r.logged, JSON.stringify(r));
     await reloadPage(page, errs);
     await midState(page);
     r = await page.evaluate(() => ({ idx: G.moodIndex, t: G.moodTimer }));
@@ -844,6 +844,58 @@ const BATCH_TESTS = {
     check('B6 combo 9 (Boyfriend echo + End of Ze World): echo never reaches a missile, only the echo D6 (≤ 30 EAS)', r.targetsBefore === 1 && r.targetsAfter === 1 && r.extraEAS <= 30.01, JSON.stringify(r));
     await sleep(500);
     check('B6: no page/console errors', errs.length === 0, errs.slice(0, 8).join(' | '));
+    await ctx.close();
+  },
+
+  async B7(browser) {
+    const { ctx, page, errs } = await openPage(browser);
+    await midState(page);
+    const near = (a, b, tol = 0.02) => Math.abs(a - b) <= tol * Math.max(1, Math.abs(b));
+    await noPassive(page);
+    let r;
+    // TIMED_DROPs: force one drop each (card._lastDrop), click it, read the EAS
+    const drop = (slots, id) => page.evaluate(async ([slots, id]) => {
+      slots.forEach((s, i) => { devGiveCard(s); _binderSelectedSlot = i; equipCard(s); });
+      document.querySelectorAll('#burn-fx .burn-coin').forEach(e => e.remove());
+      const a0 = G.aura; CARD_BY_ID.get(id)._lastDrop = 1;
+      await new Promise(res => setTimeout(res, 300));
+      document.querySelectorAll('#burn-fx .burn-coin:not(.collected)').forEach(e => e.click());
+      const eas = (G.aura - a0) / computeBaseEAS();
+      slots.forEach((s, i) => unequipSlot(i));
+      return +eas.toFixed(2);
+    }, [slots, id]);
+    r = await drop(['bi_u5'], 'bi_u5');
+    check('B7 Cheezburger alone: drop worth 10 EAS', near(r, 10), String(r));
+    r = await drop(['bi_u5', 'bi_c5'], 'bi_u5');
+    check('B7 Cheezburger + Doge: drop worth 20 EAS', near(r, 20), String(r));
+    r = await drop(['bi_c5'], 'bi_c5');
+    check('B7 Doge: auto drop worth 5 EAS', near(r, 5), String(r));
+    r = []; for (let i = 0; i < 6; i++) r.push(await drop(['bi_c3'], 'bi_c3'));
+    check('B7 Stonks: drop worth 10 EAS ±30%', r.every(v => v >= 6.99 && v <= 13.01), r.join(', '));
+    // Big Chungus +40% APC, Harold +5% and half drain
+    r = await page.evaluate(() => {
+      _binderSelectedSlot = 0; devGiveCard('bi_u3'); equipCard('bi_u3'); const ch = getBinderStats().apcMultBonus; unequipSlot(0);
+      devGiveCard('bi_u4'); equipCard('bi_u4'); const bs = getBinderStats(); unequipSlot(0);
+      return { ch, haroldMult: bs.addMult, drain: bs.drainMult, label: cardEffectLabel(CARD_BY_ID.get('bi_u3')) };
+    });
+    check('B7 Big Chungus +40% APC (label), Harold +5% Aura and ×0.5 drain', near(r.ch, 0.4) && near(r.haroldMult, 0.05) && near(r.drain, 0.5) && r.label === 'Big nugget +40%', JSON.stringify(r));
+    // Pepe label cycles through the doubled moods
+    r = await page.evaluate(async () => {
+      _binderSelectedSlot = 0; devGiveCard('bi_r2'); equipCard('bi_r2');
+      const label = () => _slotRefs.binder[0].thumb.querySelector('.slot-card-fx').textContent.replace(/ \(\d+s\)$/, '');
+      const out = [];
+      for (let i = 0; i < 3; i++) {
+        G.moodIndex = i; G.moodTimer = 0;
+        await new Promise(res => setTimeout(res, 250));
+        const bs = getBinderStats();
+        out.push([label(), +bs.apsMultBonus.toFixed(2), +bs.apcMultBonus.toFixed(2), +bs.addMult.toFixed(2)]);
+      }
+      unequipSlot(0);
+      return out;
+    });
+    check('B7 Pepe: +40% APS → +40% APC → +20% all, label follows', JSON.stringify(r) === JSON.stringify([['Mood: +40% APS', 0.4, 0, 0], ['Mood: +40% APC', 0, 0.4, 0], ['Mood: +20% all', 0, 0, 0.2]]), JSON.stringify(r));
+    await sleep(500);
+    check('B7: no page/console errors', errs.length === 0, errs.slice(0, 8).join(' | '));
     await ctx.close();
   },
 };
