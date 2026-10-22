@@ -34,13 +34,19 @@ const BAL = {
   EVENT_SPAWN_MIN_S: 90,
   EVENT_SPAWN_MAX_S: 180,
   FRENZY_THRESHOLD_CPS: 7,
-  PACK_LUCK_RARE_BONUS: 0.05,
-  PACK_LUCK_MYTHIC_BONUS: 0.02,
+  PACK_FIELD_CHANCE: 0.05,             // pullCard: Field roll first (D4)
+  PACK_COMMON_CUT: 0.60,               // then common < 0.60 ≤ uncommon < 0.88 ≤ rare
+  PACK_RARE_CUT: 0.88,
+  PACK_LUCK_RARE_BONUS: 0.05,          // Success Kid defaults (taken out of Common)
+  PACK_LUCK_MYTHIC_BONUS: 0.01,
+  PACK_PITY_DUPES: 4,                  // after this many duplicates in a row, the next pack is a new card
+  DUPE_KEK: { common: 1, uncommon: 2, rare: 4, 'mythic-rare': 6 },   // duplicate Binder/Field refund (D5)
   KEK_BASE_CLICK_INTERVAL: 30,   // guaranteed Kek Koin drop every N clicks
   KEK_RNG_CHANCE: 0.01,          // per-click random chance otherwise
   KEK_SHOP_COST: 50,             // Kek Koins to unlock card shop
   KEK_PACK_COST_BASE: 5,
-  KEK_PACK_COST_SCALE: 1.5,      // pack N cost = BASE + floor(N * SCALE)
+  KEK_PACK_COST_SCALE: 1.5,      // pack N cost = BASE + floor(N * SCALE), up to the cap
+  KEK_PACK_COST_CAP: 30,         // reached at pack #18
 };
 
 // --- Game State ---
@@ -88,6 +94,7 @@ const G = {
   pbjDropCount: 0,     // natural nugget Kek drops under Peanut Butter Jelly (every 2nd gets a bonus; not saved)
   totalKekEarned: 0,
   kekDoubleCount: 0,   // remaining Kek Koins that are worth 2× (from KEK_DOUBLE_BUFF)
+  dupeStreak: 0,       // packs in a row that pulled a card already owned (new-card pity, saved)
   // This is Fine fire level
   fireLevel: 0,        // current fire level 0–5 (escalates every 30s while f5 is equipped)
   fireAccum: 0,        // seconds accumulated toward next fire level tick
@@ -131,7 +138,7 @@ const CARD_LIBRARY = [
   { id: 'bi_c6', name: 'First World Problems', emoji: '😢', type: 'Binder', rarity: 'common', desc: 'Stop clicking for 5 seconds and earn 1.5× Aura per second until you click again. Great for going AFK!', flavor: 'My Wi-Fi is too fast to go AFK.', archetype: 'IDLE_DRIP', params: { idleThreshold: 5, idleApsMult: 1.5 } },
   // Uncommon (×6)
   { id: 'bi_u1', name: 'Grumpy Cat', emoji: '😾', type: 'Binder', rarity: 'uncommon', desc: '+3% Aura boost always, upgrades cost 10% less, AND every booster pack costs 2 fewer Kek Koins. Even after you own everything, that discount stays. No.', flavor: 'No. — Tardar Sauce', archetype: 'COST_REDUCTION', params: { reduce: 0.10, globalMult: 0.03, kekPackDiscount: 2 } },
-  { id: 'bi_u2', name: 'Success Kid', emoji: '👶', type: 'Binder', rarity: 'uncommon', desc: '+1% Aura per different card in your collection right now (up to +10%), luckier pack pulls, PLUS the more unique cards you own the cheaper packs get — up to 5 Kek Koins off each pack!', flavor: 'Nailed it.', archetype: 'PACK_LUCK', params: { rareBonus: 0.05, mythicBonus: 0.02, multPerCardType: 0.01, capPct: 0.10, kekPackDiscountPerCard: 0.2, kekPackDiscountCap: 5 } },
+  { id: 'bi_u2', name: 'Success Kid', emoji: '👶', type: 'Binder', rarity: 'uncommon', desc: '+1% Aura per different card in your collection right now (up to +10%), luckier pack pulls, PLUS the more unique cards you own the cheaper packs get — up to 5 Kek Koins off each pack!', flavor: 'Nailed it.', archetype: 'PACK_LUCK', params: { rareBonus: 0.05, mythicBonus: 0.01, multPerCardType: 0.01, capPct: 0.10, kekPackDiscountPerCard: 0.2, kekPackDiscountCap: 5 } },
   { id: 'bi_u3', name: 'Big Chungus', emoji: '🐰', type: 'Binder', rarity: 'uncommon', desc: 'Makes the nugget 1.5× bigger and gives +40% click Aura. Chase targets get bigger too, and Surgery on a Grape shrinks it less!', flavor: 'Chonky. Unstoppable. Iconic.', archetype: 'BIGGER_TARGET', params: { scale: 1.5, apcBonus: 0.40, hitboxBonus: true } },
   { id: 'bi_u4', name: 'Hide the Pain Harold', emoji: '🙂', type: 'Binder', rarity: 'uncommon', desc: '+5% Aura always, and the Skibidi Toilet drains you half as fast. I\'m fine.', flavor: 'Everything is wonderful. Please send help.', archetype: 'EVENT_SOFTENER', params: { drainMult: 0.5, globalMult: 0.05 } },
   { id: 'bi_u5', name: 'I Can Has Cheezburger', emoji: '🍔', type: 'Binder', rarity: 'uncommon', desc: 'A burger falls every 60s — click it for 10 seconds of Aura! Got Doge in another slot too? It\'s worth 20!', flavor: 'O hai. Can I also has Aura?', archetype: 'TIMED_DROP', params: { interval: 60, valueEAS: 10, autoCollect: false, comboWith: 'bi_c5', comboMult: 2 } },
@@ -720,30 +727,49 @@ function getFieldMult() {
 // linear in clicks (no compounding), so exponential cost would choke supply.
 function getKekShopCost() { return BAL.KEK_SHOP_COST; }
 function getKekPackCost() {
-  const base = BAL.KEK_PACK_COST_BASE + Math.floor(G.packsPurchased * BAL.KEK_PACK_COST_SCALE);
+  const base = Math.min(BAL.KEK_PACK_COST_CAP, BAL.KEK_PACK_COST_BASE + Math.floor(G.packsPurchased * BAL.KEK_PACK_COST_SCALE));
   const bs = getBinderStats();
   return Math.max(1, base - Math.floor(bs.kekPackDiscount));
 }
 
+// Pack groups: 'Field', or a Burn+Binder rarity ('common' / 'uncommon' / 'rare')
+function packGroup(c) { return c.type === 'Field' ? 'Field' : c.rarity; }
+const PACK_POOLS = {};
+for (const c of CARD_LIBRARY) (PACK_POOLS[packGroup(c)] = PACK_POOLS[packGroup(c)] || []).push(c);
+// Odds of each group per pack. Success Kid (PACK_LUCK) adds mythicBonus to the Field roll and
+// moves rareBonus from Common to Rare (Uncommon stays at 28%).
+function packOdds(bs) {
+  const field = BAL.PACK_FIELD_CHANCE + bs.mythicBonus;
+  const commonCut = BAL.PACK_COMMON_CUT - bs.rareBonus, rareCut = BAL.PACK_RARE_CUT - bs.rareBonus;
+  return { Field: field, common: (1 - field) * commonCut, uncommon: (1 - field) * (rareCut - commonCut), rare: (1 - field) * (1 - rareCut) };
+}
+
 function pullCard() {
-  // Success Kid (PACK_LUCK) shifts odds toward Field (mythic) and Rare pulls.
   const bs = getBinderStats();
-  const roll = Math.random();
-  let pool;
-  if (roll < 0.10 + bs.mythicBonus) {
-    pool = CARD_LIBRARY.filter(c => c.type === 'Field');
-  } else {
+  let group;
+  if (Math.random() < BAL.PACK_FIELD_CHANCE + bs.mythicBonus) group = 'Field';
+  else {
     const r2 = Math.random();
-    const rareCut = 0.88 - bs.rareBonus;
-    const rarity = r2 < Math.min(0.60, rareCut) ? 'common' : r2 < rareCut ? 'uncommon' : 'rare';
-    pool = CARD_LIBRARY.filter(c => (c.type === 'Burn' || c.type === 'Binder') && c.rarity === rarity);
+    group = r2 < BAL.PACK_COMMON_CUT - bs.rareBonus ? 'common' : r2 < BAL.PACK_RARE_CUT - bs.rareBonus ? 'uncommon' : 'rare';
   }
+  const pool = PACK_POOLS[group];
   return pool[Math.floor(Math.random() * pool.length)];
+}
+
+// New-card pity: a card not owned yet, each weighted by its normal per-pack odds (null if none left)
+function pullMissingCard() {
+  const odds = packOdds(getBinderStats());
+  const missing = CARD_LIBRARY.filter(c => !(G.collection[c.id] > 0));
+  const w = missing.map(c => odds[packGroup(c)] / PACK_POOLS[packGroup(c)].length);
+  let r = Math.random() * w.reduce((a, b) => a + b, 0);
+  for (let i = 0; i < missing.length; i++) if ((r -= w[i]) < 0) return missing[i];
+  return missing[missing.length - 1] || null;
 }
 
 let _packCanDismiss = false;
 let _pendingCard = null;
 let _pendingIsNew = false;
+let _pendingDupeKek = 0;
 
 function buyPack() {
   if (G.gameState === 'pack_opening') return;
@@ -751,11 +777,18 @@ function buyPack() {
   if (G.kekCoins < cost) return;
   G.kekCoins -= cost;
   G.packsPurchased++;
-  _pendingCard = pullCard();
+  let card = pullCard();
+  // New-card pity: after PACK_PITY_DUPES duplicates in a row, a duplicate becomes a card you don't own
+  if (G.collection[card.id] > 0 && G.dupeStreak >= BAL.PACK_PITY_DUPES) card = pullMissingCard() || card;
+  _pendingCard = card;
   // Add the card now (not on dismiss) so closing the tab mid-animation can't lose it
-  const id = _pendingCard.id;
+  const id = card.id;
   _pendingIsNew = !(G.collection[id] > 0);
+  G.dupeStreak = _pendingIsNew ? 0 : G.dupeStreak + 1;
   G.collection[id] = (G.collection[id] || 0) + 1;
+  // D5: a duplicate Binder / Field card can't be used twice, so it refunds Kek Koins
+  _pendingDupeKek = !_pendingIsNew && card.type !== 'Burn' ? (BAL.DUPE_KEK[card.rarity] || 0) : 0;
+  if (_pendingDupeKek) awardKek(_pendingDupeKek);
   saveGame();
   openPackAnim(_pendingCard);
   updateUI();
@@ -844,7 +877,7 @@ function burstPack() {
     setTimeout(() => {
       $packCardFace.classList.remove('springing');
       $packCardFace.classList.add('settled');
-      $packHint.textContent = 'Click anywhere to collect';
+      $packHint.textContent = (_pendingDupeKek ? `Duplicate → +${_pendingDupeKek} 👑 · ` : '') + 'Click anywhere to collect';
       $packHint.classList.add('visible');
       _packCanDismiss = true;
     }, 600);
@@ -859,7 +892,7 @@ function dismissPack() {
   $packCardFace.classList.add('dismissing');
   $packHint.classList.remove('visible');
 
-  log(`🃏 Pulled <span>${_pendingCard.name}</span> (${_pendingCard.type}${_pendingIsNew ? ' — NEW!' : ''})`);
+  log(`🃏 Pulled <span>${_pendingCard.name}</span> (${_pendingCard.type}${_pendingIsNew ? ' — NEW!' : ''}${_pendingDupeKek ? ` — duplicate → +${_pendingDupeKek} 👑` : ''})`);
 
   setTimeout(() => {
     $packOverlay.classList.remove('active');
@@ -3189,6 +3222,7 @@ function saveGame() {
     totalKekEarned: G.totalKekEarned,
     kekDoubleCount: G.kekDoubleCount,
     fireLevel: G.fireLevel,
+    dupeStreak: G.dupeStreak,
   };
   try { localStorage.setItem(SAVE_KEY, JSON.stringify(payload)); }
   catch (e) { console.warn('Save failed:', e); }
@@ -3234,6 +3268,7 @@ function loadGame() {
     if (d.clicksSinceLastKek !== undefined) G.clicksSinceLastKek = d.clicksSinceLastKek;
     if (d.totalKekEarned !== undefined) G.totalKekEarned = d.totalKekEarned;
     if (d.kekDoubleCount !== undefined) G.kekDoubleCount = d.kekDoubleCount;
+    if (d.dupeStreak !== undefined) G.dupeStreak = d.dupeStreak;
     if (d.fireLevel !== undefined && G.fieldSlot === 'f5') G.fireLevel = d.fireLevel;
     G.lastIdleClickTime = Date.now();   // First World Problems: idle time counts from load
     applyNuggetTransform();             // Big Chungus

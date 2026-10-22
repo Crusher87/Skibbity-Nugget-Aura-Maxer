@@ -172,9 +172,10 @@ function apsIncome(G) {
 }
 
 // ---------- 4. Kek Koin mirrors ----------
-// Mirrors getKekPackCost(); n = the Nth pack bought (packsPurchased = n-1).
+// Mirrors getKekPackCost(); n = the Nth pack bought (packsPurchased = n-1). Pre-B9 game.js has no cap.
+const PACK_CAP = BAL.KEK_PACK_COST_CAP ?? Infinity;
 function packCost(n, discount = 0) {
-  const base = BAL.KEK_PACK_COST_BASE + Math.floor((n - 1) * BAL.KEK_PACK_COST_SCALE);
+  const base = Math.min(PACK_CAP, BAL.KEK_PACK_COST_BASE + Math.floor((n - 1) * BAL.KEK_PACK_COST_SCALE));
   return Math.max(1, base - Math.floor(discount));
 }
 function cumPackKek(n, discount = 0) { let s = 0; for (let k = 1; k <= n; k++) s += packCost(k, discount); return s; }
@@ -323,44 +324,59 @@ function binderEffect(card, state) {
 // ---------- 7. Pack pulls (Monte Carlo) ----------
 // Seeded RNG (mulberry32) so runs are reproducible.
 function mulberry32(a) { return function () { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
-var PULL_WARN = [];
 const POOLS = {
   Field: CARD_LIBRARY.filter(c => c.type === 'Field'),
   common: CARD_LIBRARY.filter(c => (c.type === 'Burn' || c.type === 'Binder') && c.rarity === 'common'),
   uncommon: CARD_LIBRARY.filter(c => (c.type === 'Burn' || c.type === 'Binder') && c.rarity === 'uncommon'),
   rare: CARD_LIBRARY.filter(c => (c.type === 'Burn' || c.type === 'Binder') && c.rarity === 'rare'),
 };
-// pullCard() keeps its odds as literals (not in BAL), so read them from the function text.
-// If the regexes stop matching (code was restructured), the defaults are used and the report says so.
-const PULL = (() => {
-  const start = SRC.indexOf('function pullCard(');
-  const body = SRC.slice(start, SRC.indexOf('\n}\n', start));
-  const num = (re, d) => { const m = re.exec(body); return m ? Number(m[1]) : (PULL_WARN.push(re.source), d); };
-  return {
-    field: num(/roll\s*<\s*([0-9.]+)\s*\+\s*bs\.mythicBonus/, 0.10),
-    rareCut: num(/rareCut\s*=\s*([0-9.]+)\s*-\s*bs\.rareBonus/, 0.88),
-    common: num(/Math\.min\(\s*([0-9.]+)\s*,\s*rareCut\)/, 0.60),
-  };
-})();
-// Mirrors pullCard(): Field roll, then common / uncommon / rare cut points; rareBonus is taken from UNCOMMON.
+// pullCard() / buyPack() constants from BAL (B9). The fallbacks are the pre-B9 literals (no pity,
+// no dupe refund, Success Kid's rare bonus taken from Uncommon), so `--game <pre-B9 game.js>` gives
+// the "before" numbers for the pack validation (sweep plan §6.3).
+const PRE_B9 = BAL.PACK_FIELD_CHANCE === undefined;
+const PULL = {
+  field: BAL.PACK_FIELD_CHANCE ?? 0.10, common: BAL.PACK_COMMON_CUT ?? 0.60, rareCut: BAL.PACK_RARE_CUT ?? 0.88,
+  pity: BAL.PACK_PITY_DUPES ?? Infinity, dupeKek: BAL.DUPE_KEK || {},
+};
+// Cut points after Success Kid: rareBonus comes out of COMMON (pre-B9: out of Uncommon).
+function cuts(bs) {
+  const rareCut = PULL.rareCut - bs.rareBonus;
+  return { common: PRE_B9 ? Math.min(PULL.common, rareCut) : PULL.common - bs.rareBonus, rareCut };
+}
+// Mirrors pullCard(): Field roll, then common / uncommon / rare cut points.
 function pullCard(rng, bs) {
   let pool;
   if (rng() < PULL.field + bs.mythicBonus) pool = POOLS.Field;
-  else {
-    const r2 = rng(), rareCut = PULL.rareCut - bs.rareBonus;
-    const rarity = r2 < Math.min(PULL.common, rareCut) ? 'common' : r2 < rareCut ? 'uncommon' : 'rare';
-    pool = POOLS[rarity];
-  }
+  else { const r2 = rng(), c = cuts(bs); pool = POOLS[r2 < c.common ? 'common' : r2 < c.rareCut ? 'uncommon' : 'rare']; }
   return pool[Math.floor(rng() * pool.length)];
 }
 const NO_BS = { mythicBonus: 0, rareBonus: 0 };
 function successKidBS() { return getBinderStats(withBinder(REF_STATES[1], ['bi_u2'])); }
 // Exact per-pack odds of one specific card (analytic, from the same cut points).
 function cardOdds(card, bs = NO_BS) {
-  const pf = PULL.field + bs.mythicBonus, rareCut = PULL.rareCut - bs.rareBonus;
-  const pr = { common: Math.min(PULL.common, rareCut), uncommon: rareCut - Math.min(0.60, rareCut), rare: 1 - rareCut };
+  const pf = PULL.field + bs.mythicBonus, c = cuts(bs);
+  const pr = { common: c.common, uncommon: c.rareCut - c.common, rare: 1 - c.rareCut };
   if (card.type === 'Field') return pf / POOLS.Field.length;
   return (1 - pf) * pr[card.rarity] / POOLS[card.rarity].length;
+}
+// Mirrors pullMissingCard(): a card not owned yet, weighted by its per-pack odds.
+function pullMissing(rng, bs, owned) {
+  const missing = CARD_LIBRARY.filter(c => !owned.has(c.id));
+  if (!missing.length) return null;
+  const w = missing.map(c => cardOdds(c, bs));
+  let r = rng() * w.reduce((a, b) => a + b, 0);
+  for (let i = 0; i < missing.length; i++) if ((r -= w[i]) < 0) return missing[i];
+  return missing[missing.length - 1];
+}
+// Mirrors buyPack(): pull; after PULL.pity duplicates in a row a duplicate becomes a missing card;
+// a duplicate Binder / Field refunds DUPE_KEK (D5). st = { owned: Set, streak }.
+function buyPackSim(rng, bs, st) {
+  let c = pullCard(rng, bs), pity = false;
+  if (st.owned.has(c.id) && st.streak >= PULL.pity) { const m = pullMissing(rng, bs, st.owned); if (m) { c = m; pity = true; } }
+  const isNew = !st.owned.has(c.id);
+  st.streak = isNew ? 0 : st.streak + 1;
+  st.owned.add(c.id);
+  return { c, isNew, pity, refund: !isNew && c.type !== 'Burn' ? (PULL.dupeKek[c.rarity] || 0) : 0 };
 }
 
 // ---------- 8. Markdown helpers ----------
@@ -471,45 +487,48 @@ table(['Field', 'id', 'mult', 'Early Δincome', 'Mid Δincome', 'Late Δincome',
 // (e) packs
 P('## (e) Pack pulls — Monte Carlo of pullCard()');
 const skBS = successKidBS();
-P(`pullCard() odds read from game.js: Field ${PULL.field * 100}%, then common < ${PULL.common}, uncommon < ${PULL.rareCut}, rare above.` + (PULL_WARN.length ? ` **WARNING: could not parse ${PULL_WARN.join(', ')} — defaults used; update the PULL parser.**` : ''));
+P(PRE_B9 ? `pullCard() odds (pre-B9 game.js, literal defaults): Field ${PULL.field * 100}%, then common < ${PULL.common}, uncommon < ${PULL.rareCut}, rare above; no pity, no dupe refund, no price cap.`
+  : `pullCard() odds from BAL: Field ${f(PULL.field * 100, 0)}%, then common < ${PULL.common}, uncommon < ${PULL.rareCut}, rare above (Success Kid's rare bonus comes out of Common). New-card pity after ${PULL.pity} duplicates in a row; duplicate Binder/Field refund ${Object.entries(PULL.dupeKek).map(([k, v]) => `${k} ${v}`).join(' / ')} Kek; pack price cap ${PACK_CAP} Kek (pack #${(() => { let n = 1; while (packCost(n) < PACK_CAP) n++; return n; })()}).`);
 P('');
 P(`Pools: Field ${POOLS.Field.length}, Common ${POOLS.common.length}, Uncommon ${POOLS.uncommon.length}, Rare ${POOLS.rare.length} (Burn+Binder). Success Kid adds rareBonus ${skBS.rareBonus}, mythicBonus ${skBS.mythicBonus}.`);
 P('');
 function packRun(bs, seed) {
   const rng = mulberry32(seed), counts = {}, byGroup = { Field: 0, common: 0, uncommon: 0, rare: 0 };
-  let dupes = { usable: 0, useless: 0 };
+  const st = { owned: new Set(), streak: 0 };
+  let dupes = { usable: 0, binderField: 0 }, pity = 0, refund = 0;
   for (let i = 0; i < PACKS_MC; i++) {
-    const c = pullCard(rng, bs);
+    const r = buyPackSim(rng, bs, st), c = r.c;
     byGroup[c.type === 'Field' ? 'Field' : c.rarity]++;
-    if (counts[c.id]) (c.type === 'Burn' ? dupes.usable++ : dupes.useless++);
+    if (!r.isNew) (c.type === 'Burn' ? dupes.usable++ : dupes.binderField++);
+    if (r.pity) pity++;
+    refund += r.refund;
     counts[c.id] = (counts[c.id] || 0) + 1;
   }
-  return { byGroup, dupes, unique: Object.keys(counts).length, counts };
+  return { byGroup, dupes, unique: Object.keys(counts).length, counts, pity, refund };
 }
-function completion(bs, seed) {
-  const rng = mulberry32(seed), res = [];
+// Packs (and net Kek: pack prices − dupe refunds + shop unlock) to own all cards, via buyPackSim().
+function completion(bs, seed, discount = 0) {
+  const rng = mulberry32(seed), res = [], keks = [];
   for (let t = 0; t < TRIALS; t++) {
-    const seen = new Set(); let n = 0;
-    while (seen.size < CARD_LIBRARY.length && n < 1e5) { seen.add(pullCard(rng, bs).id); n++; }
-    res.push(n);
+    const st = { owned: new Set(), streak: 0 }; let n = 0, kek = BAL.KEK_SHOP_COST;
+    while (st.owned.size < CARD_LIBRARY.length && n < 1e5) { n++; kek += packCost(n, discount) - buyPackSim(rng, bs, st).refund; }
+    res.push(n); keks.push(kek);
   }
-  res.sort((a, b) => a - b);
-  return { mean: res.reduce((a, b) => a + b) / res.length, p50: res[Math.floor(res.length * 0.5)], p10: res[Math.floor(res.length * 0.1)], p90: res[Math.floor(res.length * 0.9)] };
+  res.sort((a, b) => a - b); keks.sort((a, b) => a - b);
+  const q = (a, x) => a[Math.floor(a.length * x)];
+  return { mean: res.reduce((a, b) => a + b) / res.length, p50: q(res, 0.5), p10: q(res, 0.1), p90: q(res, 0.9), kek50: q(keks, 0.5), kek90: q(keks, 0.9) };
 }
-const runs = [['No luck', NO_BS], ['Success Kid slotted', skBS]].map(([label, bs]) => ({ label, bs, mc: packRun(bs, SEED), comp: completion(bs, SEED + 1) }));
-table(['Setup', 'Field', 'Common', 'Uncommon', 'Rare', 'Unique after 1,000', 'Burn dupes (usable)', 'Binder/Field dupes (useless)'],
-  runs.map(r => [r.label, ...['Field', 'common', 'uncommon', 'rare'].map(k => f(r.mc.byGroup[k] / PACKS_MC * 100, 1) + '%'), r.mc.unique, r.mc.dupes.usable, r.mc.dupes.useless]));
+const SK_DISC = CARD_BY_ID.get('bi_u2').params.kekPackDiscountCap || 0;   // SK discount at its cap
+const runs = [['No luck', NO_BS, 0], ['Success Kid slotted', skBS, SK_DISC]].map(([label, bs, disc]) => ({ label, bs, disc, mc: packRun(bs, SEED), comp: completion(bs, SEED + 1, disc) }));
+table(['Setup', 'Field', 'Common', 'Uncommon', 'Rare', 'Unique after 1,000', 'Burn dupes (usable)', 'Binder/Field dupes', 'Dupe refund Kek (per pack)', 'Pity swaps'],
+  runs.map(r => [r.label, ...['Field', 'common', 'uncommon', 'rare'].map(k => f(r.mc.byGroup[k] / PACKS_MC * 100, 1) + '%'), r.mc.unique, r.mc.dupes.usable, r.mc.dupes.binderField + (PRE_B9 ? ' (useless)' : ' (refunded)'), `${f(r.mc.refund)} (${f(r.mc.refund / PACKS_MC, 2)})`, r.mc.pity]));
 P(`Per-card odds per pack (analytic): ` + [['Field', POOLS.Field[0]], ['Common', POOLS.common[0]], ['Uncommon', POOLS.uncommon[0]], ['Rare', POOLS.rare[0]]]
   .map(([l, c]) => `${l} ${f(cardOdds(c) * 100, 2)}% (SK ${f(cardOdds(c, skBS) * 100, 2)}%)`).join(' · '));
 P('');
 P(`Packs to complete all ${CARD_LIBRARY.length} cards (${TRIALS} trials):`);
 P('');
-table(['Setup', 'Mean packs', 'p10', 'Median', 'p90', 'Kek to buy median (+shop)', `Minutes @${f(KEK_MIN, 1)} Kek/min`],
-  runs.map(r => {
-    const disc = r.bs === NO_BS ? 0 : (CARD_BY_ID.get('bi_u2').params.kekPackDiscountCap || 0);   // SK discount at its cap
-    const k = cumPackKek(r.comp.p50, disc) + BAL.KEK_SHOP_COST;
-    return [r.label + (disc ? ` (−${disc} Kek/pack)` : ''), f(r.comp.mean), r.comp.p10, r.comp.p50, r.comp.p90, f(k), f(k / KEK_MIN)];
-  }));
+table(['Setup', 'Mean packs', 'p10', 'Median', 'p90', 'Median net Kek (+shop, − dupe refunds)', `Minutes @${f(KEK_MIN, 1)} Kek/min`, 'p90 Kek'],
+  runs.map(r => [r.label + (r.disc ? ` (−${r.disc} Kek/pack)` : ''), f(r.comp.mean), r.comp.p10, r.comp.p50, r.comp.p90, f(r.comp.kek50), `${f(r.comp.kek50 / KEK_MIN)} (${f(r.comp.kek50 / KEK_MIN / 60, 1)} h)`, f(r.comp.kek90)]));
 
 // Kek economy
 P('## Kek Koin economy');
@@ -520,8 +539,12 @@ table(['Income source @' + CPS + 'cps', 'Kek/min'], [
 ]);
 const GRUMPY = CARD_BY_ID.get('bi_u1').params.kekPackDiscount || 0, SKCAP = CARD_BY_ID.get('bi_u2').params.kekPackDiscountCap || 0;
 const milestones = [1, 5, 10, 20, 30, 59, 100, 150, 200];
-table(['Pack #', 'Cost', 'Cost w/ Grumpy+SK(max)', 'Cumulative Kek (+shop)', 'Minutes (clicks only)', 'Minutes (Harambe+PBJ)'],
-  milestones.map(n => { const c = cumPackKek(n) + BAL.KEK_SHOP_COST; return [n, packCost(n), packCost(n, GRUMPY + SKCAP), f(c), f(c / KEK_MIN, 1), f(c / kekPerMin({ harambe: true, pbj: true }), 1)]; }));
+table(['Pack #', 'Cost', 'Cost w/ Grumpy+SK(max)', 'Minutes of clicking for this pack', 'Cumulative Kek (+shop)', 'Minutes (clicks only)', 'Minutes (Harambe+PBJ)'],
+  milestones.map(n => { const c = cumPackKek(n) + BAL.KEK_SHOP_COST; return [n, packCost(n), packCost(n, GRUMPY + SKCAP), f(packCost(n) / KEK_MIN, 1), f(c), f(c / KEK_MIN, 1), f(c / kekPerMin({ harambe: true, pbj: true }), 1)]; }));
+P(PACK_CAP < Infinity
+  ? `Longest wait for one pack (clicks only, ${CPS} cps): ${f(PACK_CAP / KEK_MIN, 1)} min at the capped price ${PACK_CAP} Kek (Grumpy + SK max: ${packCost(1e6, GRUMPY + SKCAP)} Kek).`
+  : `No price cap: pack #59 alone takes ${f(packCost(59) / KEK_MIN, 1)} min of clicking (${CPS} cps), and it keeps growing.`);
+P('');
 
 // (f) multi-copy
 P('## (f) Multi-copy "Use All" (activateBurnMulti) N = 2..10');

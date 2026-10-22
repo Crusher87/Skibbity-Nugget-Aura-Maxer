@@ -945,6 +945,200 @@ const BATCH_TESTS = {
     check('B8: no page/console errors', errs.length === 0, errs.slice(0, 8).join(' | '));
     await ctx.close();
   },
+
+  async B9(browser) {
+    const { ctx, page, errs } = await openPage(browser);
+    await midState(page);
+    let r;
+    // Pack odds (D4 + Success Kid from Common), 40,000 pulls each
+    r = await page.evaluate(() => {
+      const mix = () => { const n = 40000, k = { Field: 0, common: 0, uncommon: 0, rare: 0 }; for (let i = 0; i < n; i++) k[packGroup(pullCard())]++; for (const g in k) k[g] = +(k[g] / n * 100).toFixed(1); return k; };
+      G.binderSlots = [null, null, null, null, null]; const plain = mix();
+      G.binderSlots = ['bi_u2', null, null, null, null]; const sk = mix();
+      G.binderSlots = [null, null, null, null, null];
+      return { plain, sk };
+    });
+    const within = (m, want) => Object.entries(want).every(([g, v]) => Math.abs(m[g] - v) < 0.8);
+    check('B9 pack odds: Field 5 / Common 57 / Uncommon 26.6 / Rare 11.4%', within(r.plain, { Field: 5, common: 57, uncommon: 26.6, rare: 11.4 }), JSON.stringify(r.plain));
+    check('B9 Success Kid: Field 6 / Common 51.7 / Uncommon 26.3 / Rare 16% (bonus from Common)', within(r.sk, { Field: 6, common: 51.7, uncommon: 26.3, rare: 16 }), JSON.stringify(r.sk));
+    // Price cap 30; combo 10: Grumpy + Success Kid + PBJ → 30 − 2 − 5 = 23, floor 1 on pack #1
+    r = await page.evaluate(() => {
+      CARD_LIBRARY.slice(0, 30).forEach(c => { G.collection[c.id] = 1; });
+      const at = (n) => { G.packsPurchased = n; return getKekPackCost(); };
+      const plain = [at(0), at(16), at(17), at(58), at(500)];
+      G.binderSlots = ['bi_u1', 'bi_u2', null, null, null]; G.fieldSlot = 'f6';
+      const combo = [at(0), at(500)];
+      G.binderSlots = [null, null, null, null, null]; G.fieldSlot = null; G.packsPurchased = 0;
+      return { plain, combo };
+    });
+    check('B9 pack price: 5 → 29 (#17) → 30 cap (#18 on); combo 10 Grumpy + SK + PBJ: 1 (floor) / 23 capped', JSON.stringify(r) === JSON.stringify({ plain: [5, 29, 30, 30, 30], combo: [1, 23] }), JSON.stringify(r));
+    // Helper: buy one pack, read what came out, then close the reveal
+    const buy = () => page.evaluate(async () => {
+      const k0 = G.kekCoins; buyPack();
+      const out = { id: _pendingCard.id, type: _pendingCard.type, rarity: _pendingCard.rarity, isNew: _pendingIsNew, streak: G.dupeStreak, refund: G.kekCoins - k0 + getKekPackCostPrev() };
+      burstPack();
+      await new Promise(res => setTimeout(res, 1200));
+      out.hint = $packHint.textContent;
+      dismissPack();
+      await new Promise(res => setTimeout(res, 900));
+      return out;
+    });
+    await page.evaluate(() => { window.getKekPackCostPrev = () => { G.packsPurchased--; const c = getKekPackCost(); G.packsPurchased++; return c; }; G.kekCoins = 1e5; });
+    // Pity: own all but one card, 4 dupes in a row → next pack is the missing card
+    r = await page.evaluate(() => {
+      const missing = CARD_LIBRARY.find(c => c.type === 'Field');
+      CARD_LIBRARY.forEach(c => { G.collection[c.id] = c === missing ? 0 : 1; });
+      G.dupeStreak = 4; window._missing = missing.id;
+      return missing.id;
+    });
+    let b = await buy();
+    check('B9 pity: after 4 duplicates in a row the pack is the missing card (streak resets)', b.id === r && b.isNew && b.streak === 0, JSON.stringify(b));
+    // D5: duplicate Binder / Field refunds DUPE_KEK and the reveal says so; Burn dupes refund nothing
+    const seen = { binderField: [], burn: [] };
+    for (let i = 0; i < 40 && (seen.binderField.length < 3 || seen.burn.length < 1); i++) {
+      b = await buy();
+      (b.type === 'Burn' ? seen.burn : seen.binderField).push(b);
+    }
+    const want = await page.evaluate(() => BAL.DUPE_KEK);
+    const bfOk = seen.binderField.length > 0 && seen.binderField.every(x => !x.isNew && x.refund === want[x.rarity] && x.hint.startsWith(`Duplicate → +${want[x.rarity]} 👑`));
+    const burnOk = seen.burn.length > 0 && seen.burn.every(x => x.refund === 0 && !x.hint.startsWith('Duplicate'));
+    check('B9 D5: duplicate Binder/Field refunds 1 / 2 / 4 / 6 Kek with "Duplicate → +N 👑"; Burn dupes refund 0', bfOk && burnOk, JSON.stringify({ bf: seen.binderField.slice(0, 3).map(x => [x.id, x.rarity, x.refund, x.hint]), burn: seen.burn.slice(0, 1).map(x => [x.id, x.refund, x.hint]) }));
+    const streak = await page.evaluate(() => G.dupeStreak);
+    check('B9 dupe streak counts duplicates when nothing is missing (no pity swap possible)', streak === seen.binderField.length + seen.burn.length, `streak ${streak}`);
+    // dupeStreak saved + loaded
+    await page.evaluate(() => { G.dupeStreak = 3; saveGame(); });
+    await reloadPage(page, errs);
+    r = await page.evaluate(() => G.dupeStreak);
+    check('B9 dupeStreak saved and loaded', r === 3, String(r));
+    await sleep(500);
+    check('B9: no page/console errors', errs.length === 0, errs.slice(0, 8).join(' | '));
+    await ctx.close();
+  },
+
+  // Sweep plan §6.2: the 10 combo checks after B9 (Mid state, 6 cps). Each combo's output is
+  // compared to the best non-combo play in it: ≤ 3× passes (Phase 4 rule; > 5× = redesign).
+  async COMBOS(browser) {
+    const { ctx, page, errs } = await openPage(browser);
+    await midState(page);
+    const c = await nuggetCentre(page);
+    await noPassive(page);
+    const near = (a, b, tol = 0.02) => Math.abs(a - b) <= tol * Math.max(1, Math.abs(b));
+    await page.evaluate(([x, y]) => {
+      window._reset = () => { G.clickBuffs = []; G.apsBuffs = []; G.binderSlots = [null, null, null, null, null]; G.fieldSlot = null; G.frenzyActive = false; G.critClickCounter = 0; G.moodIndex = 0; };
+      window._use = (ids) => ids.forEach(id => { devGiveCard(id); G.burnCooldownUntil = 0; activateBurn(id); });
+      // Aura from n nugget clicks in click values, multiplier part only (D6 flat bonus zeroed)
+      // (in plain click values: empty binder, no Field)
+      window._reset(); window._cvPlain = window._cv();
+      window._clicks = (n) => { G.clickBuffs.forEach(b => { b.easPerClick = 0; }); const a0 = G.aura; for (let i = 0; i < n; i++) doClick(x, y); return (G.aura - a0) / window._cvPlain; };
+      // Passive income per second, as gameLoop ticks it (real apsBuffMult)
+      window._rate = () => { const bs = getBinderStats(); return (G.auraPerSecond + bs.addAps) * window._realApsBuffMult() * (G.allAuraMult + bs.addMult + getFieldMult()); };
+    }, [c.x, c.y]);
+    const row = (n, name, combo, best, detail) => { const x = combo / best; check(`COMBO ${n} ${name}: ${x.toFixed(2)}× the best single play (≤ 3×)`, x <= 3 + 1e-9, detail); return x; };
+    let r;
+
+    // 1. Rickroll + El Risitas: Risitas pays base EAS
+    r = await page.evaluate(() => {
+      _reset(); let a0 = G.aura; _use(['bu_r4']); const alone = (G.aura - a0) / computeBaseEAS();
+      _use(['bu_u12']); a0 = G.aura; _use(['bu_r4']); const combo = (G.aura - a0) / computeBaseEAS();
+      _reset(); return { alone, combo };
+    });
+    row(1, 'Rickroll + El Risitas (Risitas EAS)', r.combo, r.alone, JSON.stringify(r));
+    // 2. Field × Burn: Moth + Rickroll + Charlie + Dream (APS) and Sigma + MLG (burst)
+    r = await page.evaluate(() => {
+      _reset(); const r0 = _rate();
+      _use(['bu_u12']); const rick = _rate() / r0;
+      G.fieldSlot = 'f4'; _use(['bu_c8', 'bu_c9']); const stack = _rate() / r0;
+      _reset(); let a0 = G.aura; _use(['bu_u1']); const mlg = G.aura - a0;
+      G.fieldSlot = 'f2'; a0 = G.aura; _use(['bu_u1']); const mlgSigma = G.aura - a0;
+      _reset(); return { rick, stack, mlgRatio: mlgSigma / mlg };
+    });
+    row(2, 'Field × Burn: Moth + Rickroll + Charlie + Dream income vs Rickroll alone', r.stack, r.rick, JSON.stringify(r));
+    check(`COMBO 2 Field × Burn: Sigma + MLG = ${r.mlgRatio.toFixed(2)}× MLG (additive field, ≤ 3×)`, r.mlgRatio <= 3 && near(r.mlgRatio, 1.7), JSON.stringify(r));
+    // 3. Chuck Norris + Star Wars Kid + Big Chungus (10 clicks)
+    r = await page.evaluate(() => {
+      _reset(); const plain = _clicks(10);
+      _use(['bu_c11']); const swk = _clicks(10); _reset();
+      G.binderSlots = ['bi_r1', null, null, null, null]; const chuck = _clicks(10); _reset();
+      G.binderSlots = ['bi_u3', null, null, null, null]; const chungus = _clicks(10); _reset();
+      G.binderSlots = ['bi_r1', 'bi_u3', null, null, null]; _use(['bu_c11']); const combo = _clicks(10);
+      _reset(); return { plain, swk, chuck, chungus, combo };
+    });
+    row(3, 'Chuck + SWK + Chungus (10 clicks)', r.combo, Math.max(r.swk, r.chuck, r.chungus), JSON.stringify(r));
+    // 4. GigaChad + Sigma Slam + Rickroll (passive)
+    r = await page.evaluate(() => {
+      _reset(); const r0 = _rate(); _use(['bu_u12']); const rick = _rate() / r0;
+      G.binderSlots = ['bi_r3', null, null, null, null]; G.fieldSlot = 'f2'; const combo = _rate() / r0;
+      _reset(); return { rick, combo };
+    });
+    row(4, 'GigaChad + Sigma + Rickroll income vs Rickroll alone', r.combo, r.rick, JSON.stringify(r));
+    // 5. Pepe + a mult window: APC mode + SWK clicks, APS mode + Rickroll income
+    r = await page.evaluate(() => {
+      _reset(); _use(['bu_c11']); const swk = _clicks(10); _reset();
+      G.binderSlots = ['bi_r2', null, null, null, null]; G.moodIndex = 1; _use(['bu_c11']); const clickCombo = _clicks(10); _reset();
+      const r0 = _rate(); _use(['bu_u12']); const rick = _rate() / r0;
+      G.binderSlots = ['bi_r2', null, null, null, null]; G.moodIndex = 0; const apsCombo = _rate() / r0;
+      _reset(); return { swk, clickCombo, rick, apsCombo };
+    });
+    row(5, 'Pepe (APC mode) + SWK clicks', r.clickCombo, r.swk, JSON.stringify(r));
+    row(5, 'Pepe (APS mode) + Rickroll income', r.apsCombo, r.rick, JSON.stringify(r));
+    // 6. Frenzy + Dramatic Chipmunk + Chuck crit over Chipmunk's window at 7 cps (35 clicks)
+    r = await page.evaluate(([x, y]) => {
+      _reset(); G.frenzyActive = true; _use(['bu_c14']); const chip = _clicks(35); _reset();
+      G.frenzyActive = true; G.binderSlots = ['bi_r1', null, null, null, null]; _use(['bu_c14']); G.clickBuffs.forEach(b => { b.easPerClick = 0; });
+      let max = 0; for (let i = 0; i < 35; i++) { const a0 = G.aura; doClick(x, y); max = Math.max(max, (G.aura - a0) / window._cvPlain); }
+      _reset(); G.frenzyActive = true; G.binderSlots = ['bi_r1', null, null, null, null]; _use(['bu_c14']); const sum = _clicks(35);
+      _reset(); return { chip, combo: sum, maxClick: max, cap: BAL.CLICK_TOTAL_CAP * 10 };
+    }, [c.x, c.y]);
+    row(6, 'frenzy + Chipmunk + Chuck crit vs frenzy + Chipmunk', r.combo, r.chip, JSON.stringify(r));
+    check(`COMBO 6 click cap: biggest click ${r.maxClick.toFixed(0)}× ≤ CLICK_TOTAL_CAP × frenzy (${r.cap}×)`, r.maxClick <= r.cap + 1e-6, JSON.stringify(r));
+    // 7. OAG + Star Wars Kid + frenzy: Kek per OAG window
+    r = await page.evaluate(([x, y]) => {
+      _reset(); _use(['bu_r6']); let k0 = G.kekCoins; for (let i = 0; i < 300; i++) doClick(x, y); const alone = G.kekCoins - k0; _reset();
+      _use(['bu_r6', 'bu_c11']); G.frenzyActive = true; k0 = G.kekCoins; for (let i = 0; i < 300; i++) doClick(x, y); const combo = G.kekCoins - k0;
+      _reset(); return { alone, combo };
+    }, [c.x, c.y]);
+    row(7, 'OAG + SWK + frenzy Kek (cap 15)', r.combo, r.alone, JSON.stringify(r));
+    // 8. Max multi-copy: hold 10, "Use All" consumes 3 (El Risitas EAS, Brian Kek)
+    r = await page.evaluate(async () => {
+      _reset(); G.collection.bu_r4 = 10; G.burnCooldownUntil = 0; let a0 = G.aura; activateBurnMulti('bu_r4');
+      const ris = (G.aura - a0) / computeBaseEAS(), risLeft = G.collection.bu_r4;
+      const t = kekCoinTemplate; kekCoinTemplate = null;   // pay Brian's coins directly (awardKek fallback)
+      G.collection.bu_c6 = 10; G.burnCooldownUntil = 0; const k0 = G.kekCoins; activateBurnMulti('bu_c6');
+      await new Promise(res => setTimeout(res, 1500));
+      kekCoinTemplate = t;
+      return { ris, risLeft, risSingles: 3 * 600, brian: G.kekCoins - k0, brianLeft: G.collection.bu_c6, brianSingles: 3 * 2 };
+    });
+    row(8, 'El Risitas ×10 held → ×3 used vs 3 singles', r.ris, r.risSingles, JSON.stringify(r));
+    row(8, 'Bad Luck Brian ×10 held → ×3 used vs 3 singles', r.brian, r.brianSingles, JSON.stringify(r));
+    check('COMBO 8 cap: 7 copies left of each', r.risLeft === 7 && r.brianLeft === 7, JSON.stringify(r));
+    // 9. Boyfriend echo + Chocolate Rain / End of Ze World: nugget clicks + echoes never reach coins or missiles
+    r = await page.evaluate(async ([x, y]) => {
+      _reset(); document.querySelectorAll('#burn-fx > *').forEach(e => e.remove());
+      activeKekCoins.forEach(k => { k.collected = true; });   // earlier nugget coins would auto-collect mid-check
+      const rng = BAL.KEK_RNG_CHANCE; BAL.KEK_RNG_CHANCE = 0; G.clicksSinceLastKek = -1e6;   // no nugget Kek drops: only the rain's Kek counts
+      _use(['bu_c4', 'bu_u7', 'bu_r5']);
+      const k0 = G.kekCoins;
+      // 48 clicks over the whole 8 s rain (6 cps)
+      for (let i = 0; i < 48; i++) { $nuggetContainer.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: x, clientY: y })); await new Promise(res => setTimeout(res, 170)); }
+      const out = { coinsCollected: document.querySelectorAll('#burn-fx .burn-coin.collected').length, missilesLeft: document.querySelectorAll('#burn-fx .burn-target').length, rainKek: G.kekCoins - k0 };
+      document.querySelectorAll('#burn-fx > *').forEach(e => e.remove());
+      BAL.KEK_RNG_CHANCE = rng; G.clicksSinceLastKek = 0;
+      _reset(); return out;
+    }, [c.x, c.y]);
+    check('COMBO 9 Boyfriend echo + Chocolate Rain / End of Ze World: 1.00× reach (no coin or missile collected by clicks)', r.coinsCollected === 0 && r.missilesLeft === 1 && r.rainKek === 0, JSON.stringify(r));
+    // 10. Grumpy + Success Kid + PBJ: pack price floor 1, capped price 23
+    r = await page.evaluate(() => {
+      _reset(); CARD_LIBRARY.slice(0, 30).forEach(c => { G.collection[c.id] = Math.max(1, G.collection[c.id] || 0); });
+      G.binderSlots = ['bi_u1', 'bi_u2', null, null, null]; G.fieldSlot = 'f6';
+      G.packsPurchased = 0; const first = getKekPackCost(); G.packsPurchased = 200; const capped = getKekPackCost();
+      _reset(); G.packsPurchased = 200; const plain = getKekPackCost(); G.packsPurchased = 0;
+      return { first, capped, plain };
+    });
+    check(`COMBO 10 Grumpy + SK + PBJ: pack #1 ${r.first} Kek (floor 1), capped ${r.capped} (= ${r.plain} − 7), never free`, r.first === 1 && r.capped === r.plain - 7 && r.plain === 30, JSON.stringify(r));
+    await sleep(500);
+    check('COMBOS: no page/console errors', errs.length === 0, errs.slice(0, 8).join(' | '));
+    await ctx.close();
+  },
 };
 
 // ---------- main ----------
