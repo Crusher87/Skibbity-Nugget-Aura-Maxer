@@ -185,10 +185,11 @@ function clicksPerKek(intervalReduce = 0) {
   let e = 0; for (let j = 0; j < I; j++) e += Math.pow(1 - q, j);
   return e;
 }
-// Kek per minute from clicking at CPS. spawnKekCoin() adds Field kekDropBonus (PBJ) per spawn.
+// Kek per minute from clicking at CPS. doClick() adds PBJ's bonus Kek on every kekDropBonusEvery-th natural drop.
 function kekPerMin({ harambe = false, pbj = false } = {}) {
   const red = harambe ? (CARD_BY_ID.get('bi_c2').params.kekIntervalReduce || 0) : 0;
-  const perDrop = 1 + (pbj ? (CARD_BY_ID.get('f6').params.kekDropBonus || 0) : 0);
+  const every = CARD_BY_ID.get('f6').params.kekDropBonusEvery;
+  const perDrop = 1 + (pbj && every ? 1 / every : 0);
   return CPS * 60 / clicksPerKek(red) * perDrop;
 }
 const KEK_MIN = kekPerMin();
@@ -446,11 +447,11 @@ function ohioBossChance(boost) { const b = boost > 1 ? (boost - 1) * 0.2 / 0.8 :
 function fieldTradeoff(p) {
   const t = [];
   if (p.disableAutoCollect) t.push('AUTO_COLLECT burns refused (card kept, Boyfriend echo allowed), no Doge auto-collect, Kek coins don\'t auto-collect after ' + KEK_IDLE_S + 's (they do on other Fields)');
-  if (p.blackoutInterval) t.push(`blackout ${p.blackoutDuration}s every ${p.blackoutInterval}s (${f(p.blackoutDuration / (p.blackoutInterval + p.blackoutDuration) * 100, 0)}% of the time dark)`);
+  if (p.blackoutInterval) t.push(`blackout ${p.blackoutDuration}s every ${p.blackoutInterval}s (${f(p.blackoutDuration / p.blackoutInterval * 100, 0)}% of the time dark; the interval clock runs during the blackout)`);
   if (p.fireInterval) t.push(`ramps ${f(p.mult * 100)}%→${f((p.mult + p.fireMaxLevel * p.fireAuraPer) * 100)}% over ${p.fireInterval * p.fireMaxLevel}s, resets when unequipped`);
   if (p.bossSpawnMult) { const base = 1 / 5, ohio = ohioBossChance(p.bossSpawnMult); t.push(`boss chance per event ${f(base * 100)}%→${f(ohio * 100)}% (+${f((ohio / base - 1) * 100)}%, text says +${f((p.bossSpawnMult - 1) * 100)}%), +${p.kekBossReward} Kek per win`); }
   if (p.coinTrailInterval) t.push(`Nyan Cat every ${p.coinTrailInterval}s worth 3 Kek if clicked = ${f(3 * 60 / p.coinTrailInterval, 1)} Kek/min (${f(3 * 60 / p.coinTrailInterval / KEK_MIN * 100)}% of click Kek)`);
-  if (p.kekDropBonus) t.push(`+${p.kekDropBonus} Kek per spawnKekCoin = +${f(kekPerMin({ pbj: true }) - KEK_MIN, 1)} Kek/min (+${f(p.kekDropBonus * 100)}%); also on Brian / Nyan coins`);
+  if (p.kekDropBonusEvery) t.push(`+1 Kek every ${p.kekDropBonusEvery === 2 ? '2nd' : p.kekDropBonusEvery + 'th'} natural nugget drop = +${f(kekPerMin({ pbj: true }) - KEK_MIN, 1)} Kek/min (+${f(100 / p.kekDropBonusEvery)}% click Kek), only while clicking; Brian / Nyan coins excluded`);
   if (p.cardDropRate) t.push('cardDropRate: NOOP (no card drops exist)');
   return t.join('; ') || 'none';
 }

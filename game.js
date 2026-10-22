@@ -85,6 +85,7 @@ const G = {
   // Kek Koin currency (separate from Aura; gates card shop + packs)
   kekCoins: 0,
   clicksSinceLastKek: 0,
+  pbjDropCount: 0,     // natural nugget Kek drops under Peanut Butter Jelly (every 2nd gets a bonus; not saved)
   totalKekEarned: 0,
   kekDoubleCount: 0,   // remaining Kek Koins that are worth 2× (from KEK_DOUBLE_BUFF)
   // This is Fine fire level
@@ -114,11 +115,11 @@ function getCost(u) {
 const CARD_LIBRARY = [
   // ============ FIELD cards (6) — single active slot, global mult + theme ============
   { id: 'f1', name: 'Ohio Boss', emoji: '🌽', type: 'Field', rarity: 'mythic-rare', desc: '+50% Aura on everything! Boss spawns 50% more often — but every time you defeat the Skibidi Toilet while in Ohio, it drops 5 Kek Koins!', flavor: 'Only in Ohio...', archetype: 'FIELD_THEME', params: { mult: 0.50, theme: 'ohio', bossSpawnMult: 1.5, kekBossReward: 5 } },
-  { id: 'f2', name: 'Sigma Slam', emoji: '🗿', type: 'Field', rarity: 'mythic-rare', desc: 'Huge +80% Aura boost! But nothing collects itself — you have to click everything. Only for real pros!', flavor: 'No talking. Just grinding.', archetype: 'FIELD_THEME', params: { mult: 0.80, theme: 'sigma', disableAutoCollect: true } },
+  { id: 'f2', name: 'Sigma Slam', emoji: '🗿', type: 'Field', rarity: 'mythic-rare', desc: 'Huge +70% Aura boost! But nothing collects itself — Kek Koins never auto-collect, Doge needs clicking, and auto-click burns won\'t work. Only for real pros!', flavor: 'No talking. Just grinding.', archetype: 'FIELD_THEME', params: { mult: 0.70, theme: 'sigma', disableAutoCollect: true } },
   { id: 'f3', name: 'Nyan Cat', emoji: '🌈', type: 'Field', rarity: 'mythic-rare', desc: '+30% Aura boost. Every 20s Nyan Cat flies across the screen — click it to grab 3 Kek Koins! Lower multiplier than other fields, but free Kek Koins forever!', flavor: 'Pop tart. Cat. Rainbow. Perfect.', archetype: 'FIELD_THEME', params: { mult: 0.30, theme: 'nyan', coinTrailInterval: 20 } },
-  { id: 'f4', name: 'Moth and Lamp', emoji: '🪔', type: 'Field', rarity: 'mythic-rare', desc: '+65% Aura boost! But every 30s the screen plunges into darkness for 5 seconds — you can barely see anything. Kek Koins, burn cards, events — all hidden in the dark. The lamp giveth, the lamp taketh.', flavor: 'LAMP. Beautiful, glowing LAMP.', archetype: 'FIELD_THEME', params: { mult: 0.65, theme: 'dark', blackoutInterval: 30, blackoutDuration: 5 } },
+  { id: 'f4', name: 'Moth and Lamp', emoji: '🪔', type: 'Field', rarity: 'mythic-rare', desc: '+70% Aura boost! But every 30s the screen plunges into darkness for 5 seconds — you can barely see anything. Kek Koins, burn cards, events — all hidden in the dark. The lamp giveth, the lamp taketh.', flavor: 'LAMP. Beautiful, glowing LAMP.', archetype: 'FIELD_THEME', params: { mult: 0.70, theme: 'dark', blackoutInterval: 30, blackoutDuration: 5 } },
   { id: 'f5', name: 'This is Fine', emoji: '🔥', type: 'Field', rarity: 'mythic-rare', desc: 'Starts at +25% Aura — but every 30s the fire spreads one level (up to 5). Each level adds +8% more Aura and thickens the smoke. At max you\'re at +65% Aura. This is fine.', flavor: 'Everything is totally fine.', archetype: 'FIELD_THEME', params: { mult: 0.25, theme: 'fire', fireInterval: 30, fireMaxLevel: 5, fireAuraPer: 0.08 } },
-  { id: 'f6', name: 'Peanut Butter Jelly', emoji: '🍌', type: 'Field', rarity: 'mythic-rare', desc: '+40% Aura! AND every Kek Koin that pops out of the nugget comes with a free bonus Kek Koin! It\'s peanut butter jelly time!', flavor: 'It\'s peanut butter jelly time!', archetype: 'FIELD_THEME', params: { mult: 0.40, theme: 'banana', kekDropBonus: 1 } },
+  { id: 'f6', name: 'Peanut Butter Jelly', emoji: '🍌', type: 'Field', rarity: 'mythic-rare', desc: '+30% Aura, and every 2nd Kek Koin that pops out of the nugget comes with a free bonus one! It\'s peanut butter jelly time!', flavor: 'It\'s peanut butter jelly time!', archetype: 'FIELD_THEME', params: { mult: 0.30, theme: 'banana', kekDropBonusEvery: 2 } },
 
   // ============ BINDER cards (15) — passive while slotted ============
   // Common (×6) — +5% global or unique passive
@@ -1345,6 +1346,9 @@ function doClick(cx, cy) {
   if (G.clicksSinceLastKek >= effectiveKekInterval || Math.random() < BAL.KEK_RNG_CHANCE) {
     spawnKekCoin();
     G.clicksSinceLastKek = 0;
+    // Peanut Butter Jelly: every Nth natural nugget drop comes with a free bonus Kek (not Brian / Nyan coins)
+    const fp = getFieldParams();
+    if (fp.kekDropBonusEvery && (++G.pbjDropCount % fp.kekDropBonusEvery === 0)) awardKek(1);
   }
   updateUI();
 }
@@ -2437,7 +2441,7 @@ function awardKek(n) {
 function spawnKekCoin() {
   // Models not loaded yet: pay the coin (and the PBJ bonus) directly instead of losing it
   if (!kekCoinTemplate || !nuggetModel) {
-    awardKek(1 + (getFieldParams().kekDropBonus || 0));
+    awardKek(1);
     return;
   }
   const mesh = kekCoinTemplate.clone(true);
@@ -2482,9 +2486,6 @@ function spawnKekCoin() {
     light: null,
     collected: false,
   });
-  // Peanut Butter Jelly bonus: every natural drop also gives bonus Kek Koins directly.
-  const kekDropBonus = getFieldParams().kekDropBonus || 0;
-  if (kekDropBonus) awardKek(kekDropBonus);
 }
 
 function spawnKekImpactBurst(pos) {

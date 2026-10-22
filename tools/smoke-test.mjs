@@ -898,6 +898,53 @@ const BATCH_TESTS = {
     check('B7: no page/console errors', errs.length === 0, errs.slice(0, 8).join(' | '));
     await ctx.close();
   },
+
+  async B8(browser) {
+    const { ctx, page, errs } = await openPage(browser);
+    await midState(page);
+    const c = await nuggetCentre(page);
+    let r;
+    // Swap through all 6 Fields: mult as tuned
+    r = await page.evaluate(() => {
+      const out = {};
+      for (const id of ['f1', 'f2', 'f3', 'f4', 'f5', 'f6']) { devGiveCard(id); _binderSelectedSlot = 'field'; equipCard(id); out[id] = +getFieldMult().toFixed(2); }
+      unequipFieldSlot();
+      return out;
+    });
+    check('B8 Fields: Ohio 50 / Sigma 70 / Nyan 30 / Moth 70 / This is Fine 25+ / PBJ 30%', JSON.stringify(r) === JSON.stringify({ f1: 0.5, f2: 0.7, f3: 0.3, f4: 0.7, f5: 0.25, f6: 0.3 }), JSON.stringify(r));
+    // PBJ: 120 clicks = 4 natural drops → +2 bonus Kek (every 2nd); Brian's coins get none
+    r = await page.evaluate(async ([x, y]) => {
+      devGiveCard('f6'); _binderSelectedSlot = 'field'; equipCard('f6');
+      const rng = BAL.KEK_RNG_CHANCE; BAL.KEK_RNG_CHANCE = 0; G.frenzyCooldown = 1e9;
+      G.clicksSinceLastKek = 0; G.pbjDropCount = 0; activeKekCoins.forEach(k => { k.collected = true; });
+      const k0 = G.kekCoins, n0 = activeKekCoins.length;
+      for (let i = 0; i < 120; i++) doClick(x, y);
+      const clicks = { bonus: G.kekCoins - k0, coins: activeKekCoins.length - n0 };
+      const k1 = G.kekCoins; devGiveCard('bu_c6'); G.burnCooldownUntil = 0; activateBurn('bu_c6');
+      await new Promise(res => setTimeout(res, 500));
+      BAL.KEK_RNG_CHANCE = rng; unequipFieldSlot();
+      return { ...clicks, brianBonus: G.kekCoins - k1 };
+    }, [c.x, c.y]);
+    check('B8 PBJ: 120 clicks → 4 nugget drops + 2 bonus Kek (every 2nd); Brian coins no bonus', r.coins === 4 && r.bonus === 2 && r.brianBonus === 0, JSON.stringify(r));
+    // Sigma: a resting Kek coin stays put past the idle timeout
+    r = await page.evaluate(async () => {
+      devGiveCard('f2'); _binderSelectedSlot = 'field'; equipCard('f2');
+      activeKekCoins.forEach(k => { k.collected = true; });
+      await new Promise(res => setTimeout(res, 100));
+      spawnKekCoin();
+      const coin = activeKekCoins[activeKekCoins.length - 1];
+      while (coin.phase !== 'idle') await new Promise(res => setTimeout(res, 50));
+      coin.idleAge = KEK_IDLE_TIMEOUT_S + 5;
+      await new Promise(res => setTimeout(res, 600));
+      const out = { collected: coin.collected, phase: coin.phase };
+      unequipFieldSlot();
+      return out;
+    });
+    check('B8 Sigma Slam: Kek coins stay put (no idle auto-collect)', !r.collected, JSON.stringify(r));
+    await sleep(500);
+    check('B8: no page/console errors', errs.length === 0, errs.slice(0, 8).join(' | '));
+    await ctx.close();
+  },
 };
 
 // ---------- main ----------
