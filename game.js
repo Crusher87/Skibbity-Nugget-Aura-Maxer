@@ -135,7 +135,7 @@ const CARD_LIBRARY = [
   { id: 'bi_c1', name: 'Shrek', emoji: '🧅', type: 'Binder', rarity: 'common', desc: '+5% Aura on everything! Plus the Skibidi Toilet drains you 10% less. Get out of my swamp!', flavor: 'This is MY swamp.', archetype: 'GLOBAL_MULT', params: { mult: 0.05, drainReduce: 0.10 } },
   { id: 'bi_c2', name: 'Harambe', emoji: '🦍', type: 'Binder', rarity: 'common', desc: 'Dicks out for Harambe! Kek Koins appear every 22 clicks instead of 30 — AND every click earns +0.5 flat Aura. RIP.', flavor: 'Gone too soon. Never forgotten.', archetype: 'PASSIVE_APC_PCT', params: { flatApc: 0.5, kekIntervalReduce: 8 } },
   { id: 'bi_c3', name: 'Stonks', emoji: '📈', type: 'Binder', rarity: 'common', desc: 'A bonus item falls every 90s — click it to grab about 10 seconds of Aura (it swings ±30%)! Stonks going up!', flavor: 'Number go up. Very stonks.', archetype: 'TIMED_DROP', params: { interval: 90, valueEAS: 10, fluctuate: 0.3, autoCollect: false } },
-  { id: 'bi_c4', name: 'Philosoraptor', emoji: '🦖', type: 'Binder', rarity: 'common', desc: 'Every 90s a floating question mark floats down the screen. Hover over it to grab 3 Kek Koins — not Aura, actual Kek Koins for packs!', flavor: 'If a nugget spins and no one clicks it, does it make Aura?', archetype: 'TIMED_DROP', params: { interval: 90, kekValue: 3, requireHover: true, dropEmoji: '❓' } },
+  { id: 'bi_c4', name: 'Philosoraptor', emoji: '🦖', type: 'Binder', rarity: 'common', desc: 'Every 90s a floating question mark floats down the screen. Hover over it (or tap it) to grab 3 Kek Koins — not Aura, actual Kek Koins for packs!', flavor: 'If a nugget spins and no one clicks it, does it make Aura?', archetype: 'TIMED_DROP', params: { interval: 90, kekValue: 3, requireHover: true, dropEmoji: '❓' } },
   { id: 'bi_c5', name: 'Doge', emoji: '🐕', type: 'Binder', rarity: 'common', desc: 'Such bonus! Much Aura! Every 60s you automatically get 5 seconds of Aura. Wow.', flavor: 'wow. such aura. very click. much wow.', archetype: 'TIMED_DROP', params: { interval: 60, valueEAS: 5, autoCollect: true } },
   { id: 'bi_c6', name: 'First World Problems', emoji: '😢', type: 'Binder', rarity: 'common', desc: 'Stop clicking for 5 seconds and earn 1.5× Aura per second until you click again. Great for going AFK!', flavor: 'My Wi-Fi is too fast to go AFK.', archetype: 'IDLE_DRIP', params: { idleThreshold: 5, idleApsMult: 1.5 } },
   // Uncommon (×6)
@@ -385,6 +385,9 @@ const S = {
 // Reuse a single Audio per filename. The first call lazily creates and caches it;
 // subsequent calls rewind it to 0 so the same clip can re-fire without spawning
 // throwaway DOM Audio elements (which the GC otherwise has to chase).
+// Phones/tablets: used for "Tap" vs "Click" wording
+const IS_TOUCH = window.matchMedia && matchMedia('(pointer: coarse)').matches;
+
 const _sfxCache = new Map();
 function sfx(name, vol = 0.7) {
   let a = _sfxCache.get(name);
@@ -411,10 +414,18 @@ function _playBg() {
   _bgAudio.onended = _scheduleBg;
 }
 let _bgStarted = false;
+let _bgTrying = false;
+// Only mark the music as started once play() actually succeeds. On phones the first nugget tap
+// arrives as a touchstart, which browsers don't count as a user gesture, so that first play() is
+// blocked; the next tap retries instead of leaving the music off for the whole session.
 function _initBg() {
-  if (_bgStarted) return;
-  _bgStarted = true;
+  if (_bgStarted || _bgTrying) return;
+  _bgTrying = true;
   _playBg();
+  _bgAudio.play()
+    .then(() => { _bgStarted = true; })
+    .catch(() => { })
+    .finally(() => { _bgTrying = false; });
 }
 
 let _frenzyLoopId = null;
@@ -465,7 +476,9 @@ camera.position.set(0, 0.5, 4.5);   // z=4.5 matches the 1.5× canvas expansion 
 camera.lookAt(0, 0, 0);
 
 const renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true });
-renderer.setPixelRatio(window.devicePixelRatio);
+// Cap at 2: phones report 3, which renders the 1.5×-size nugget canvas at 9× the pixels
+// for no visible gain and drains battery.
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
 
 function resizeRenderer() {
   const sz = canvas.clientWidth;   // canvas is 150% of container; use its own size
@@ -850,7 +863,7 @@ function openPackAnim(card) {
   // Pack floats and waits for player click
   setTimeout(() => {
     $boosterContainer.classList.add('float-idle');
-    $packHint.textContent = 'Click the pack to open!';
+    $packHint.textContent = (IS_TOUCH ? 'Tap' : 'Click') + ' the pack to open!';
     $packHint.classList.add('visible');
     $boosterContainer.onclick = (e) => { e.stopPropagation(); burstPack(); };
   }, 80);
@@ -879,7 +892,7 @@ function burstPack() {
     setTimeout(() => {
       $packCardFace.classList.remove('springing');
       $packCardFace.classList.add('settled');
-      $packHint.textContent = (_pendingDupeKek ? `Duplicate → +${_pendingDupeKek} 👑 · ` : '') + 'Click anywhere to collect';
+      $packHint.textContent = (_pendingDupeKek ? `Duplicate → +${_pendingDupeKek} 👑 · ` : '') + (IS_TOUCH ? 'Tap' : 'Click') + ' anywhere to collect';
       $packHint.classList.add('visible');
       _packCanDismiss = true;
     }, 600);
@@ -1258,6 +1271,7 @@ function updateCardShopUI() {
     $cardsLocked.style.display = 'flex';   // matches its CSS `display:flex` rule
     $cardsUnlocked.style.display = 'none';
     $binderSlotsPanel.style.display = 'none';
+    document.body.classList.remove('binder-shown');
     const btn = document.getElementById('buy-shop-btn');
     if (btn) btn.disabled = G.kekCoins < BAL.KEK_SHOP_COST;
     const costEl = document.getElementById('shop-unlock-cost');
@@ -1267,6 +1281,7 @@ function updateCardShopUI() {
   $cardsLocked.style.display = 'none';
   $cardsUnlocked.style.display = 'flex';
   $binderSlotsPanel.style.display = 'block';
+  document.body.classList.add('binder-shown');
 
   const cost = getKekPackCost();
   $packCostDisplay.innerHTML = `Cost: ${cost} <img src="Images/Kek Koin.png" class="kek-inline-icon"> Kek Koins`;
@@ -1286,9 +1301,12 @@ $nuggetContainer.addEventListener('click', (e) => {
 });
 $nuggetContainer.addEventListener('touchstart', (e) => {
   e.preventDefault();
-  const t = e.touches[0];
-  if (tryCollectKekCoin(t.clientX, t.clientY)) return;
-  doClick(t.clientX, t.clientY);
+  // changedTouches = only the finger(s) that just landed, each at its own spot
+  // (touches[0] is always the first finger, so a second finger used to "click" where the first was)
+  for (const t of e.changedTouches) {
+    if (tryCollectKekCoin(t.clientX, t.clientY)) continue;
+    doClick(t.clientX, t.clientY);
+  }
 }, { passive: false });
 
 // Document-level capture: collect kek coins anywhere on screen.
@@ -1298,9 +1316,14 @@ document.addEventListener('click', (e) => {
   if (tryCollectKekCoin(e.clientX, e.clientY)) e.stopPropagation();
 }, { capture: true });
 document.addEventListener('touchstart', (e) => {
-  const t = e.touches[0];
-  if (tryCollectKekCoin(t.clientX, t.clientY)) e.stopPropagation();
-}, { capture: true, passive: true });
+  const t = e.changedTouches[0];
+  if (tryCollectKekCoin(t.clientX, t.clientY)) {
+    e.stopPropagation();
+    // Cancel the click the browser would fire after this tap, so it can't also
+    // click the nugget or a shop button under the coin.
+    if (e.cancelable) e.preventDefault();
+  }
+}, { capture: true, passive: false });
 
 function doClick(cx, cy) {
   if (G.gameState === 'pack_opening') return;
@@ -1616,12 +1639,16 @@ function spawnSkulls() {
 
 // --- Cursor tracking ---
 let _cursorX = window.innerWidth / 2, _cursorY = window.innerHeight / 2;
-document.addEventListener('mousemove', e => {
+// Pointer events cover mouse and touch (the nugget's touchstart cancels the emulated mouse events,
+// so mousemove alone never saw taps and Moth and Lamp's light stayed put on phones).
+function _trackCursor(e) {
   _cursorX = e.clientX; _cursorY = e.clientY;
   // Moth and Lamp: the theme-dark vignette (index.html body.theme-dark::before) follows the cursor
   document.body.style.setProperty('--mx', e.clientX + 'px');
   document.body.style.setProperty('--my', e.clientY + 'px');
-});
+}
+document.addEventListener('pointermove', _trackCursor, { passive: true });
+document.addEventListener('pointerdown', _trackCursor, { passive: true });
 
 // --- Moth and Lamp blackout ---
 let _mothBlackoutAccum = 0;
@@ -1908,12 +1935,14 @@ function showBurnToast(text) {
 
 const RARITY_ORDER = { rare: 0, uncommon: 1, common: 2 };
 function renderBurnBar() {
+  document.body.classList.remove('has-burns');
   if (!G.cardShopUnlocked) { $burnBar.style.display = 'none'; return; }
   // Rare → uncommon → common, then library order; BURN_INVENTORY_CAP cards per page
   const owned = CARD_LIBRARY.filter(c => c.type === 'Burn' && (G.collection[c.id] || 0) > 0)
     .sort((a, b) => RARITY_ORDER[a.rarity] - RARITY_ORDER[b.rarity]);
   if (owned.length === 0) { $burnBar.style.display = 'none'; return; }
   $burnBar.style.display = 'block';
+  document.body.classList.add('has-burns');
   $burnBarItems.innerHTML = '';
   const pages = Math.ceil(owned.length / BAL.BURN_INVENTORY_CAP);
   G.burnBarPage = Math.max(0, Math.min(pages - 1, G.burnBarPage));
@@ -1950,21 +1979,22 @@ function renderBurnBar() {
       : '';
     wrap.innerHTML = `<div class="burn-card-vis">${buildCardFaceHTML(card)}<span class="bcnt">×${cnt}</span>${useAllBtn}</div>`;
     wrap.title = `${card.name} — ${card.desc}`;
-    wrap.onclick = () => activateBurn(card.id);
+    wrap.addEventListener('pointerdown', e => { _burnTapType = e.pointerType; });
+    wrap.onclick = () => {
+      // Touch has no hover, so the first tap shows the card and a second tap on it burns it
+      if (_burnTapType === 'touch' && _burnPreviewId !== card.id) {
+        showBurnPreview(wrap, card);
+        return;
+      }
+      activateBurn(card.id);
+    };
     if (hasMulti) {
       const btn = wrap.querySelector('.burn-use-all-btn');
       btn.addEventListener('click', e => { e.stopPropagation(); activateBurnMulti(card.id); });
     }
-    wrap.addEventListener('mouseenter', () => {
-      // Position preview at this card's horizontal center so it appears to rise from the hand
-      const rect = wrap.getBoundingClientRect();
-      $burnPreview.style.left = `${rect.left + rect.width / 2}px`;
-      $burnPreview.innerHTML = buildCardFaceHTML(card);
-      $burnPreview.classList.add('visible');
-    });
-    wrap.addEventListener('mouseleave', () => {
-      $burnPreview.classList.remove('visible');
-    });
+    // Mouse only: a tap also fires emulated mouseenter, which would skip the tap-to-preview step
+    wrap.addEventListener('pointerenter', e => { if (e.pointerType === 'mouse') showBurnPreview(wrap, card); });
+    wrap.addEventListener('pointerleave', e => { if (e.pointerType === 'mouse') hideBurnPreview(); });
     $burnBarItems.appendChild(wrap);
   });
   if (pages > 1) $burnBarItems.appendChild(pageBtn('▶', 1));
@@ -1980,8 +2010,27 @@ function burnBlockedReason(card) {
   return null;
 }
 
-function activateBurn(cardId) {
+let _burnTapType = 'mouse';
+let _burnPreviewId = null;
+function showBurnPreview(wrap, card) {
+  // Position preview at this card's horizontal center so it appears to rise from the hand
+  const rect = wrap.getBoundingClientRect();
+  $burnPreview.style.left = `${rect.left + rect.width / 2}px`;
+  $burnPreview.innerHTML = buildCardFaceHTML(card);
+  $burnPreview.classList.add('visible');
+  _burnPreviewId = card.id;
+}
+function hideBurnPreview() {
   $burnPreview.classList.remove('visible');
+  _burnPreviewId = null;
+}
+// A tap anywhere outside the burn bar closes a tap-opened preview
+document.addEventListener('pointerdown', e => {
+  if (_burnPreviewId && !e.target.closest('.burn-card-wrap')) hideBurnPreview();
+}, { passive: true });
+
+function activateBurn(cardId) {
+  hideBurnPreview();
   const now = Date.now();
   if (now < G.burnCooldownUntil) {
     log(`⏳ Burn cooldown — wait a moment.`);
@@ -2717,6 +2766,7 @@ function spawnBurnKekCoin(kekAmt, emoji, requireHover) {
   };
   if (requireHover) {
     coin.addEventListener('mouseenter', collect);
+    coin.addEventListener('pointerdown', collect);   // touch screens can't hover: a tap grabs it
   } else {
     coin.onclick = collect;
   }
@@ -2828,6 +2878,7 @@ function spawnBurnCoin(valueEAS, emoji, requireHover) {
   };
   if (requireHover) {
     coin.addEventListener('mouseenter', collect);
+    coin.addEventListener('pointerdown', collect);   // touch screens can't hover: a tap grabs it
   } else {
     coin.onclick = collect;
   }
