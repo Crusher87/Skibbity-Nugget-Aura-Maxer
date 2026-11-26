@@ -56,10 +56,15 @@ const G = {
   clickMultTimer: 0,
   clickMultValue: 1,
   kekPerHit: 0,        // Kek Koins awarded per click during active PRECISION window
-  // NEW: temp passive multiplier (from TEMP_APS_MULT burns)
+  precisionTimer: 0,   // seconds left in the active PRECISION window
+  precisionCenterOnly: false, // Overly Attached GF: only dead-center clicks get the bonus
+  doubleNextClick: false,     // Arthur Fist: next nugget click counts double
+  // Temp passive multiplier (from TEMP_APS_MULT burns)
   apsMultTimer: 0,
   apsMultValue: 1,
+  bossPauseTimer: 0,   // Have You Ever Had A Dream: Skibidi drain frozen while > 0
   echoTimer: 0,      // Distracted Boyfriend echo click duration remaining
+  echoOffset: 150,   // px offset of the echo click
   owned: { ketchup: 0, ranch: 0, szechuan: 0, grimace: 0, sigma: 0 },
   // Card system
   cardShopUnlocked: false,
@@ -528,7 +533,7 @@ function _playShopSound() {
 // --- Tab Switching ---
 let _cardsTabClicks = 0, _cardsTabClickTimer = null;
 function switchTab(tab) {
-  if (tab === 'cards') {
+  if (tab === 'cards' && devCheatsEnabled()) {
     _cardsTabClicks++;
     clearTimeout(_cardsTabClickTimer);
     _cardsTabClickTimer = setTimeout(() => { _cardsTabClicks = 0; }, 1500);
@@ -598,7 +603,7 @@ function cardEffectLabel(card) {
 // Returns the *additions* to base APS/APC/Mult; caller applies on top of G base values.
 function getBinderStats() {
   let addAps = 0, addApc = 0, addMult = 0, apcMultBonus = 0, apsMultBonus = 0, costReduce = 0, drainMult = 1, hitboxBonus = false;
-  let kekIntervalReduce = 0, kekPackDiscount = 0;
+  let kekIntervalReduce = 0, kekPackDiscount = 0, rareBonus = 0, mythicBonus = 0;
   for (const cardId of G.binderSlots) {
     if (!cardId) continue;
     const card = CARD_BY_ID.get(cardId);
@@ -627,7 +632,7 @@ function getBinderStats() {
         drainMult *= (p.drainMult || 1);   // multiplicative so Shrek+Harold stack correctly
         addMult += p.globalMult || 0;      // Harold baseline +3%
         break;
-      case 'CRIT_CHANCE': apcMultBonus += (p.mult - 1) / p.everyN; break; // expected value
+      // CRIT_CHANCE is applied per click in doClick, so it adds nothing here.
       case 'SCALING_OVER_TIME': {
         if (!G.scalingStartTime) G.scalingStartTime = Date.now();
         const minutes = (Date.now() - G.scalingStartTime) / 60000;
@@ -644,6 +649,8 @@ function getBinderStats() {
       case 'PACK_LUCK': {
         const uniqueOwned = Object.keys(G.collection).filter(k => G.collection[k] > 0).length;
         addMult += Math.min(p.capPct || 0.10, uniqueOwned * (p.multPerCardType || 0.01));
+        rareBonus += p.rareBonus || BAL.PACK_LUCK_RARE_BONUS;
+        mythicBonus += p.mythicBonus || BAL.PACK_LUCK_MYTHIC_BONUS;
         // Success Kid: pack discount scales with unique cards owned
         if (p.kekPackDiscountPerCard) {
           kekPackDiscount += Math.min(p.kekPackDiscountCap || 5, uniqueOwned * p.kekPackDiscountPerCard);
@@ -656,7 +663,7 @@ function getBinderStats() {
   // Add percentage bonuses on top of base stats
   addAps += G.auraPerSecond * apsMultBonus;
   addApc += G.auraPerClick * apcMultBonus;
-  return { addAps, addApc, addMult, costReduce, drainMult, apcMultBonus, apsMultBonus, hitboxBonus, kekIntervalReduce, kekPackDiscount };
+  return { addAps, addApc, addMult, costReduce, drainMult, apcMultBonus, apsMultBonus, hitboxBonus, kekIntervalReduce, kekPackDiscount, rareBonus, mythicBonus };
 }
 
 // --- Field Slot Stats ---
@@ -679,13 +686,16 @@ function getKekPackCost() {
 }
 
 function pullCard() {
+  // Success Kid (PACK_LUCK) shifts odds toward Field (mythic) and Rare pulls.
+  const bs = getBinderStats();
   const roll = Math.random();
   let pool;
-  if (roll < 0.10) {
+  if (roll < 0.10 + bs.mythicBonus) {
     pool = CARD_LIBRARY.filter(c => c.type === 'Field');
   } else {
     const r2 = Math.random();
-    const rarity = r2 < 0.60 ? 'common' : r2 < 0.88 ? 'uncommon' : 'rare';
+    const rareCut = 0.88 - bs.rareBonus;
+    const rarity = r2 < Math.min(0.60, rareCut) ? 'common' : r2 < rareCut ? 'uncommon' : 'rare';
     pool = CARD_LIBRARY.filter(c => (c.type === 'Burn' || c.type === 'Binder') && c.rarity === rarity);
   }
   return pool[Math.floor(Math.random() * pool.length)];
@@ -996,6 +1006,8 @@ function equipCard(cardId) {
   } else {
     if (card.type !== 'Binder') { log(`⚠️ Binder slots only accept Binder cards.`); return; }
     G.binderSlots[_binderSelectedSlot] = cardId;
+    // Restart TIMED_DROP timers so re-equipping can't trigger an instant drop
+    card._lastDrop = Date.now();
     log(`🃏 Equipped <span>${card.name}</span> to Slot ${_binderSelectedSlot + 1}`);
   }
   updateBinderSlotsUI();
@@ -1135,6 +1147,9 @@ function updateBinderSlotsUI() {
     r.fx.textContent = '';
     if (r.slot) { r.slot.classList.remove('occupied'); delete r.slot.dataset.rarity; }
   }
+  // GigaChad: black-and-white screen while slotted
+  const grayscale = G.binderSlots.some(id => id && CARD_BY_ID.get(id)?.params?.filter === 'grayscale');
+  document.body.classList.toggle('gigachad-mode', grayscale);
 }
 
 function buyCardShop() {
@@ -1218,19 +1233,36 @@ function doClick(cx, cy) {
       spawnParticle(cx, cy - 30, '💥 CRIT!');
     }
   }
+  // Overly Attached GF: off-center clicks during the PRECISION window get no bonus
+  let precisionHit = G.precisionTimer > 0;
+  if (precisionHit && G.precisionCenterOnly) {
+    const r = $nuggetContainer.getBoundingClientRect();
+    const dist = Math.hypot(cx - (r.left + r.width / 2), cy - (r.top + r.height / 2));
+    if (dist > r.width * 0.15) {
+      precisionHit = false;
+      clickMult /= G.clickMultValue;
+      spawnParticle(cx, cy - 30, '😠 MISS');
+    }
+  }
+  // Arthur Fist: next click counts double
+  if (G.doubleNextClick) {
+    G.doubleNextClick = false;
+    clickMult *= 2;
+    spawnParticle(cx, cy - 50, '👊 x2');
+  }
   let earned = (G.auraPerClick + bs.addApc) * (G.allAuraMult + bs.addMult + fieldMult) * clickMult;
   if (G.frenzyActive) earned *= 10;
   G.aura += earned;
   spawnParticle(cx, cy, '+' + fmt(earned));
   // Overly Attached GF: award Kek Koin per click during PRECISION window
-  if (G.clickMultTimer > 0 && G.kekPerHit > 0) {
+  if (precisionHit && G.kekPerHit > 0) {
     G.kekCoins += G.kekPerHit;
     G.totalKekEarned += G.kekPerHit;
     updateCardShopUI();
   }
-  // Distracted Boyfriend echo: ghost click offset 150px to the side
+  // Distracted Boyfriend echo: ghost click offset to the side
   if (G.echoTimer > 0) {
-    const echoX = cx + 150;
+    const echoX = cx + G.echoOffset;
     spawnParticle(echoX, cy, '+' + fmt(earned));
     G.aura += earned;
   }
@@ -1270,9 +1302,9 @@ function checkFrenzy() {
   const now = Date.now();
   const recent = G.clickTimestamps.filter(t => now - t < 3000);
   const cps = recent.length / 3;
-  G.frenzyMeter = Math.min(cps / 7, 1);
+  G.frenzyMeter = Math.min(cps / BAL.FRENZY_THRESHOLD_CPS, 1);
   $frenzyFill.style.height = (G.frenzyMeter * 100) + '%';
-  if (cps >= 7) activateFrenzy();
+  if (cps >= BAL.FRENZY_THRESHOLD_CPS) activateFrenzy();
 }
 
 function activateFrenzy() {
@@ -1399,14 +1431,11 @@ function spawnEvent() {
     if (evDef.isTax) {
       sfxRand(S.fanumDodge);
       log('🛡️ <span>Fanum Tax DODGED!</span> Your Aura is safe!');
-    } else if (evDef.name === 'Level 67 Gyatt') {
+    } else {
+      // Level 67 Gyatt (the boss never spawns as a flying event — see startBossFight)
       evDef.reward(G);
       sfxRand(S.gyatt);
       log('😜 <span>Level 67 Gyatt!</span> 100x click power for 15s!');
-    } else {
-      const r = evDef.reward(G);
-      sfxRand(S.toilet);
-      log(`🚽 <span>Skibidi Toilet clicked!</span> +${fmt(r)} Aura!`);
     }
     setTimeout(() => el.remove(), 400);
     activeEvent = null;
@@ -1536,7 +1565,7 @@ function gameLoop() {
 
   // MOOD_SWING timer
   G.moodTimer += dt;
-  if (G.moodTimer >= 30) { G.moodTimer = 0; G.moodIndex++; }
+  if (G.moodTimer >= (CARD_BY_ID.get('bi_r2').params.cycleSec || 30)) { G.moodTimer = 0; G.moodIndex++; }
 
   if (G.frenzyActive) {
     G.frenzyTimer -= dt;
@@ -1549,10 +1578,17 @@ function gameLoop() {
     G.clickMultTimer -= dt;
     if (G.clickMultTimer <= 0) {
       G.clickMultValue = 1;
-      G.kekPerHit = 0;
       log('⏱️ <span>Click boost expired!</span>');
     }
   }
+  if (G.precisionTimer > 0) {
+    G.precisionTimer -= dt;
+    if (G.precisionTimer <= 0) {
+      G.kekPerHit = 0;
+      G.precisionCenterOnly = false;
+    }
+  }
+  if (G.bossPauseTimer > 0) G.bossPauseTimer -= dt;
   if (G.apsMultTimer > 0) {
     G.apsMultTimer -= dt;
     if (G.apsMultTimer <= 0) {
@@ -1580,6 +1616,8 @@ function gameLoop() {
       if (Date.now() - card._lastDrop >= (card.params.interval || 60) * 1000) {
         card._lastDrop = Date.now();
         let valueEAS = card.params.valueEAS || 30;
+        // Stonks: payout swings up or down by up to `fluctuate`
+        if (card.params.fluctuate) valueEAS *= 1 + (Math.random() * 2 - 1) * card.params.fluctuate;
         // Cheezburger + Doge combo: double payout when both are slotted
         if (card.params.comboWith && G.binderSlots.includes(card.params.comboWith)) {
           valueEAS *= (card.params.comboMult || 2);
@@ -1810,8 +1848,10 @@ const EFFECT_HANDLERS = {
       const amt = Math.max(floor, Math.min(cap, raw));
       G.aura += amt;
       spawnParticle(window.innerWidth / 2, window.innerHeight / 2, '+' + fmt(amt));
-      if (p.retroOverlay) document.body.style.filter = 'sepia(1) hue-rotate(90deg)';
-      setTimeout(() => document.body.style.filter = '', (p.retroOverlay || 3) * 1000);
+      if (p.retroOverlay) {
+        document.body.style.filter = 'sepia(1) hue-rotate(90deg)';
+        setTimeout(() => document.body.style.filter = '', p.retroOverlay * 1000);
+      }
       return;
     }
 
@@ -1845,8 +1885,12 @@ const EFFECT_HANDLERS = {
     const amt = baseEAS * (p.apsSeconds || 0);
     G.aura += amt;
     spawnParticle(window.innerWidth / 2, window.innerHeight / 2, '+' + fmt(amt));
-    if (p.shake) document.body.style.animation = 'bossShake 0.4s 6';
-    setTimeout(() => document.body.style.animation = '', 2000);
+    if (p.shake) {
+      document.body.style.animation = 'bossShake 0.4s 6';
+      setTimeout(() => document.body.style.animation = '', 2000);
+    }
+    // Arthur Fist: next nugget click counts double
+    if (p.doubleNext) G.doubleNextClick = true;
     // Arthur Fist: also drops Kek Koins as a bonus
     if (p.kekBonus) {
       G.kekCoins += p.kekBonus;
@@ -1856,13 +1900,16 @@ const EFFECT_HANDLERS = {
     }
   },
   TEMP_CLICK_MULT(card, p) {
-    const newMult = Math.min(BAL.CLICK_MULT_CAP, (G.clickMultValue || 1) * (p.mult || 1));
-    G.clickMultValue = newMult;
-    G.clickMultTimer = p.duration || 10;
+    // Stacks up to the cap, but never lowers a bigger boost that's already running (e.g. Level 67 Gyatt's 100×)
+    const cur = G.clickMultValue || 1;
+    G.clickMultValue = Math.max(cur, Math.min(BAL.CLICK_MULT_CAP, cur * (p.mult || 1)));
+    G.clickMultTimer = Math.max(G.clickMultTimer, p.duration || 10);
   },
   TEMP_APS_MULT(card, p) {
     G.apsMultValue = p.mult || 1;
     G.apsMultTimer = p.duration || 10;
+    // Have You Ever Had A Dream: freeze the Skibidi drain for the same window
+    if (p.pauseBoss) G.bossPauseTimer = p.duration || 10;
   },
   COIN_RAIN(card, p) {
     const total = p.coins || 10;
@@ -2009,7 +2056,7 @@ const EFFECT_HANDLERS = {
       for (let i = 0; i < total; i++) {
         setTimeout(() => {
           const el = document.createElement('div');
-          el.className = p.neon ? 'burn-coin motion-streak' : 'burn-coin motion-streak';
+          el.className = 'burn-coin motion-streak';
           el.textContent = card.emoji;
           if (p.neon) el.style.filter = 'drop-shadow(0 0 6px cyan)';
           el.style.setProperty('--dur', (dur / total * 3) + 's');
@@ -2068,7 +2115,8 @@ const EFFECT_HANDLERS = {
     // Distracted Boyfriend: echo-click mode
     if (p.echoClick) {
       G.echoTimer = p.echoDuration || 8;
-      log(`👀 Echo clicks active for ${p.echoDuration}s!`);
+      G.echoOffset = p.echoOffset || 150;
+      log(`👀 Echo clicks active for ${G.echoTimer}s!`);
       return;
     }
     // Spiderman Pointing: scoop up any settled/settling Kek Koins first
@@ -2111,7 +2159,8 @@ const EFFECT_HANDLERS = {
         }
         // Disaster Girl sweep: collect nearby burn-coins in sweepRadius
         if (p.sweep && p.sweepRadius) {
-          const sweepX = cx + (i / clicks) * (window.innerWidth - cx * 2);
+          // Track the fire band as it crosses the screen left to right
+          const sweepX = (i / clicks) * window.innerWidth;
           document.querySelectorAll('.burn-coin:not(.collected)').forEach(el => {
             const r = el.getBoundingClientRect();
             if (Math.abs(r.left - sweepX) < p.sweepRadius) el.click();
@@ -2121,9 +2170,12 @@ const EFFECT_HANDLERS = {
     }
   },
   PRECISION(card, p) {
-    G.clickMultValue = Math.min(BAL.CLICK_MULT_CAP, p.mult || 1);
-    G.clickMultTimer = p.duration || 10;
+    const dur = p.duration || 10;
+    G.clickMultValue = Math.max(G.clickMultValue, Math.min(BAL.CLICK_MULT_CAP, p.mult || 1));
+    G.clickMultTimer = Math.max(G.clickMultTimer, dur);
+    G.precisionTimer = dur;
     G.kekPerHit = p.kekPerHit || 0;
+    G.precisionCenterOnly = !!p.deadCenterOnly;
     if (p.smallNugget || p.invisibleNugget) {
       const $c = document.getElementById('nugget-container');
       const orig = $c.style.transform;
@@ -2147,16 +2199,22 @@ const EFFECT_HANDLERS = {
       document.body.appendChild(div);
       setTimeout(() => { if (div.parentNode) { G.aura += amt; div.remove(); } }, 6000);
     } else {
-      G.aura += amt;
-      spawnParticle(window.innerWidth / 2, window.innerHeight / 2, '+' + fmt(amt));
-      if (p.scramble) {
-        document.body.style.filter = 'hue-rotate(180deg)';
-        setTimeout(() => document.body.style.filter = '', p.scramble * 1000);
+      // Pity payout lands when the gag ends ("sit through it")
+      const gagMs = (p.gagDuration || p.scramble || 3) * 1000;
+      if (p.scramble) document.body.style.filter = 'hue-rotate(180deg)';
+      if (p.blur) document.body.style.filter = `blur(${Math.min(p.blur, 8) / 4}px)`;
+      const $c = $nuggetContainer;
+      const origTransform = $c.style.transform;
+      if (p.biggerNugget) {
+        $c.style.transition = 'transform 0.3s';
+        $c.style.transform = 'translate(-50%,-50%) scale(1.4)';
       }
-      if (p.blur) {
-        document.body.style.filter = 'blur(2px)';
-        setTimeout(() => document.body.style.filter = '', p.blur * 1000);
-      }
+      setTimeout(() => {
+        document.body.style.filter = '';
+        if (p.biggerNugget) $c.style.transform = origTransform;
+        G.aura += amt;
+        spawnParticle(window.innerWidth / 2, window.innerHeight / 2, '+' + fmt(amt));
+      }, gagMs);
     }
   },
   RHYTHM(card, p) {
@@ -2294,10 +2352,11 @@ function spawnKekCoin() {
     light: null,
     collected: false,
   });
-  // Peanut Butter Jelly bonus: every natural drop also gives +1 Kek Koin directly.
-  if (G.fieldSlot === 'f6') {
-    G.kekCoins += 1;
-    G.totalKekEarned += 1;
+  // Peanut Butter Jelly bonus: every natural drop also gives bonus Kek Koins directly.
+  const kekDropBonus = getFieldParams().kekDropBonus || 0;
+  if (kekDropBonus) {
+    G.kekCoins += kekDropBonus;
+    G.totalKekEarned += kekDropBonus;
     updateUI();
   }
 }
@@ -2635,7 +2694,8 @@ function spawnBurnTarget(card, p) {
       if (!p.regenDelay) return;
       clearTimeout(regenTimer);
       regenTimer = setTimeout(() => {
-        if (tgt.parentNode && myHp < hp) {
+        if (!tgt.parentNode) return;   // target gone (killed or timed out): stop regen loop
+        if (myHp < hp) {
           myHp = Math.min(hp, myHp + (p.regenHp || 1));
           tgt.style.filter = 'brightness(1.5)';
           setTimeout(() => { tgt.style.filter = ''; }, 300);
@@ -2706,9 +2766,11 @@ function spawnRhythmGame(card, p) {
   const dur = (p.duration || 10) * 1000;
   const baseEAS = computeBaseEAS();
 
+  // A perfect run pays the card's rarity budget; partial runs scale down from there
+  const budget = card.rarity === 'rare' ? BAL.EAS_RARE : card.rarity === 'common' ? BAL.EAS_COMMON : BAL.EAS_UNCOMMON;
   const payout = (score, total) => {
     const mult = 1 + (score / total) * (maxMult - 1);
-    const amt = baseEAS * BAL.EAS_UNCOMMON * mult / maxMult;
+    const amt = baseEAS * budget * mult / maxMult;
     G.aura += amt;
     showBurnToast((score === total ? 'PERFECT! ' : `${score}/${total} `) + '+' + fmt(amt));
   };
@@ -2725,23 +2787,27 @@ function spawnRhythmGame(card, p) {
       prompt.style.cssText = `position:fixed;top:50%;left:${x};transform:translate(-50%,-50%);font-size:3.5rem;z-index:600;pointer-events:none;`;
       prompt.textContent = isLeft ? '⬅️' : '➡️';
       document.body.appendChild(prompt);
-      const clickHandler = (e) => {
-        const clickLeft = e.clientX < window.innerWidth / 2;
-        if (clickLeft === isLeft) score++;
+      // Each prompt ends exactly once: on a click or on timeout, whichever comes first
+      let done = false;
+      const finish = () => {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
         prompt.remove();
         document.removeEventListener('click', clickHandler);
         step2++;
         setTimeout(nextSide, 200);
       };
+      const clickHandler = (e) => {
+        const clickLeft = e.clientX < window.innerWidth / 2;
+        if (clickLeft === isLeft) score++;
+        finish();
+      };
       document.addEventListener('click', clickHandler);
-      setTimeout(() => {
-        prompt.remove();
-        document.removeEventListener('click', clickHandler);
-        step2++;
-        setTimeout(nextSide, 200);
-      }, dur / total);
+      const timer = setTimeout(finish, dur / total);
     };
-    nextSide();
+    // Defer so the click that activated the burn card doesn't answer the first prompt
+    setTimeout(nextSide, 0);
     return;
   }
 
@@ -2758,6 +2824,12 @@ function spawnRhythmGame(card, p) {
       let hit = false;
       zone.onclick = () => {
         if (hit) return;
+        // Zones must be hit bottom-to-top: each one higher than the last
+        if (i !== score) {
+          zone.style.background = 'rgba(255,80,80,0.4)';
+          setTimeout(() => { if (!hit) zone.style.background = 'rgba(100,200,255,0.25)'; }, 250);
+          return;
+        }
         hit = true;
         score++;
         zone.style.background = 'rgba(100,255,100,0.4)';
@@ -2917,6 +2989,12 @@ $bossSprite.addEventListener('click', () => {
 function tickBoss(dt) {
   if (!G.boss || !G.boss.active) return;
   const now = Date.now();
+  // Have You Ever Had A Dream: drain (and the AFK clock) frozen
+  if (G.bossPauseTimer > 0) {
+    G.boss.lastInteract = now;
+    $bossDrain.textContent = `DRAIN: ${(G.boss.drainAccumPct * 100).toFixed(1)}% (FROZEN)`;
+    return;
+  }
   // Auto-resolve if player AFK
   if (now - G.boss.lastInteract > BAL.BOSS_AUTO_RESOLVE_IDLE_S * 1000 && G.boss.defeatClicks.length === 0) {
     endBossFight(false);
@@ -3011,8 +3089,11 @@ function manualSave() {
   toast._t = setTimeout(() => toast.classList.remove('visible'), 2500);
 }
 
-// Auto-save every 60 seconds
+// Auto-save every 60 seconds, and when the tab is closed or hidden
+let _wipingSave = false;
 setInterval(saveGame, 60000);
+window.addEventListener('pagehide', () => { if (!_wipingSave) saveGame(); });
+document.addEventListener('visibilitychange', () => { if (document.hidden && !_wipingSave) saveGame(); });
 
 // --- New Game ---
 function openNewGameConfirm() {
@@ -3022,14 +3103,23 @@ function closeNewGameConfirm() {
   document.getElementById('new-game-overlay').classList.remove('active');
 }
 function confirmNewGame() {
+  _wipingSave = true;   // stop the pagehide save from writing the old game back
   localStorage.removeItem(SAVE_KEY);
   location.reload();
+}
+
+// Debug cheats only work once the dev menu is unlocked (click ACTIVE BINDER 5×),
+// so players can't trigger them by accident.
+function devCheatsEnabled() {
+  const btn = document.getElementById('dev-menu-btn');
+  return !!btn && btn.style.display !== 'none';
 }
 
 // --- Debug cheat: click SAUCES tab 5× quickly → +1M aura ---
 (() => {
   let _clicks = 0, _timer = null;
   document.getElementById('tab-sauces').addEventListener('click', () => {
+    if (!devCheatsEnabled()) return;
     _clicks++;
     clearTimeout(_timer);
     if (_clicks >= 5) {
