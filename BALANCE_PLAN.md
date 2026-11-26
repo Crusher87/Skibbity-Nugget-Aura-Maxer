@@ -1,6 +1,6 @@
 # Card Balance Plan
 
-A phased, sequential plan to rebalance all 57 booster cards (6 Field + 15 Binder + 38 Burn). SAUCE upgrades are a separate system and are out of scope.
+A phased, sequential plan to rebalance all 57 booster cards (6 Field + 15 Binder + 38 Burn). SAUCE upgrades are a separate system and are out of scope here; they were rebalanced afterwards in [docs/balance/SAUCE.md](docs/balance/SAUCE.md).
 
 ---
 

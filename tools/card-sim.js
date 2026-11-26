@@ -70,9 +70,10 @@ const HIT = { skilled: 0.9, casual: 0.5 };       // hit / success rate for skill
 // Reference states (plan §3.1). uniqueOwned / brainMinutes are extra
 // assumptions needed by Success Kid and Expanding Brain.
 const REF_STATES = [
-  { name: 'Early', owned: { ketchup: 10, ranch: 2, szechuan: 0, grimace: 0, sigma: 0 }, uniqueOwned: 10, brainMinutes: 10 },
-  { name: 'Mid', owned: { ketchup: 40, ranch: 20, szechuan: 5, grimace: 2, sigma: 0 }, uniqueOwned: 30, brainMinutes: 40 },
-  { name: 'Late', owned: { ketchup: 80, ranch: 50, szechuan: 20, grimace: 15, sigma: 3 }, uniqueOwned: 50, brainMinutes: 120 },
+  // SAUCE counts from tools/progress-sim.js (Active profile, 6 clicks/s): ~10 min, ~45 min, ~4 h.
+  { name: 'Early', owned: { ketchup: 14, ranch: 11, szechuan: 3, grimace: 0, sigma: 0 }, uniqueOwned: 7, brainMinutes: 10 },
+  { name: 'Mid', owned: { ketchup: 29, ranch: 27, szechuan: 16, grimace: 8, sigma: 0 }, uniqueOwned: 26, brainMinutes: 40 },
+  { name: 'Late', owned: { ketchup: 56, ranch: 53, szechuan: 37, grimace: 33, sigma: 11 }, uniqueOwned: 59, brainMinutes: 120 },
 ];
 // Kek-cost reference packs (plan §3.3): the Nth pack bought.
 const REF_PACKS = [10, 30];

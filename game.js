@@ -101,12 +101,14 @@ const G = {
 };
 
 // --- Upgrades ---
+// SAUCE curve (docs/balance/SAUCE.md, tools/progress-sim.js): at 6 clicks/s with cards, events and frenzy,
+// first buys land around 0.3 / 3 / 6 / 13 / 45 min and every tier stays worth buying.
 const UPGRADES = [
-  { id: 'ketchup', name: '🍅 Ketchup', rarity: 'common', type: 'passive', desc: '+1 Aura/sec', effect: 'aps', value: 1, baseCost: 150, scale: 1.15 },
-  { id: 'ranch', name: '🥗 Sus Ranch', rarity: 'uncommon', type: 'passive', desc: '+15 Aura/sec', effect: 'aps', value: 15, baseCost: 3000, scale: 1.18 },
-  { id: 'szechuan', name: '🌶️ Szechuan Synergy', rarity: 'rare', type: 'active', desc: '+10 Aura/click', effect: 'apc', value: 10, baseCost: 75000, scale: 1.20 },
-  { id: 'grimace', name: '👿 Grimace Extract', rarity: 'epic', type: 'passive', desc: '+200 Aura/sec', effect: 'aps', value: 200, baseCost: 3000000, scale: 1.25 },
-  { id: 'sigma', name: '💎 Sigma Ohio Rizz Glaze', rarity: 'legendary', type: 'mult', desc: '+0.5x Global Multiplier', effect: 'mult', value: 0.5, baseCost: 100000000, scale: 1.50 },
+  { id: 'ketchup', name: '🍅 Ketchup', rarity: 'common', type: 'passive', desc: '+1 Aura/sec', effect: 'aps', value: 1, baseCost: 100, scale: 1.15 },
+  { id: 'ranch', name: '🥗 Sus Ranch', rarity: 'uncommon', type: 'passive', desc: '+8 Aura/sec', effect: 'aps', value: 8, baseCost: 1100, scale: 1.15 },
+  { id: 'szechuan', name: '🌶️ Szechuan Synergy', rarity: 'rare', type: 'active', desc: '+4 Aura/click', effect: 'apc', value: 4, baseCost: 15000, scale: 1.22 },
+  { id: 'grimace', name: '👿 Grimace Extract', rarity: 'epic', type: 'passive', desc: '+75 Aura/sec', effect: 'aps', value: 75, baseCost: 130000, scale: 1.16 },
+  { id: 'sigma', name: '💎 Sigma Ohio Rizz Glaze', rarity: 'legendary', type: 'mult', desc: '+0.5x Global Multiplier', effect: 'mult', value: 0.5, baseCost: 3000000, scale: 1.40 },
 ];
 
 function getCost(u) {
