@@ -2989,8 +2989,9 @@
 
     /* Portrait tablets: the buddy gets a band across the top, laid out side to side */
     @media (min-width:768px) and (orientation:portrait) {
-      body.mp-size-s { --mp-band-h: 26vh; }
-      body.mp-size-l { --mp-band-h: 44vh; }
+      body.mp-split { --mp-band-h: 38vh; }
+      body.mp-split.mp-size-s { --mp-band-h: 31vh; }
+      body.mp-split.mp-size-l { --mp-band-h: 46vh; }
       body.mp-split { width: 100vw; height: calc(100vh - var(--mp-band-h)); margin-top: var(--mp-band-h); }
       body.mp-split #mp-panel { top: calc(-1 * var(--mp-band-h)); left: 0; width: 100%; height: var(--mp-band-h); border-left: none; border-bottom: 3px solid rgba(80, 180, 255, 0.45); }
       #mp-inner { display: grid; grid-template-columns: 1fr 1fr 1fr; grid-template-rows: auto 1fr; column-gap: 1em; font-size: clamp(12px, 1.9cqw, 20px); overflow: hidden; }
@@ -2999,7 +3000,7 @@
       #mp-body > .mp-col { flex: 1; }
       .mp-col-feed { min-height: 0; overflow-y: auto; }
       #mp-nugget-wrap { height: 3.6em; } #mp-nugget { font-size: 3em; }
-      body.mp-split { --gw: 100vw; --left-w: clamp(170px, 22vw, 260px); --shop-w: clamp(220px, 30vw, 300px);
+      body.mp-split { --gw: 100vw; --left-w: clamp(200px, 24vw, 260px); --shop-w: clamp(220px, 30vw, 300px);
         --nugget-sz: max(150px, min(calc((100vh - var(--mp-band-h)) * 0.34), calc(100vw - 2 * max(var(--left-w) + 90px, var(--shop-w)) - 16px))); }
     }
 
