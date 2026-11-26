@@ -462,8 +462,14 @@
     const t = $('mp-hide-btn'); if (t) t.textContent = hidden ? '👥 Show buddy' : '🙈 Hide buddy';
     kickResize();
   }
+  // Default: a medium panel on big screens, a smaller one on tablets/laptops so the game keeps room.
+  function currentSize() {
+    const saved = lsGet(LS_SIZE);
+    if (SIZES.includes(saved)) return saved;
+    return Math.max(window.innerWidth, window.innerHeight) >= 1400 ? 'm' : 's';
+  }
   function applySize() {
-    const sz = SIZES.includes(lsGet(LS_SIZE)) ? lsGet(LS_SIZE) : 'm';
+    const sz = currentSize();
     document.body.classList.remove('mp-size-s', 'mp-size-m', 'mp-size-l');
     document.body.classList.add('mp-size-' + sz);
     kickResize();
@@ -558,7 +564,7 @@
     toggleHidden() { lsSet(LS_HIDE, lsGet(LS_HIDE) === '1' ? null : '1'); applyHidden(); },
     togglePanelOpen() { document.body.classList.toggle('mp-open'); },
     cycleSize() {
-      const cur = SIZES.includes(lsGet(LS_SIZE)) ? lsGet(LS_SIZE) : 'm';
+      const cur = currentSize();
       lsSet(LS_SIZE, SIZES[(SIZES.indexOf(cur) + 1) % SIZES.length]);
       applySize();
     },
