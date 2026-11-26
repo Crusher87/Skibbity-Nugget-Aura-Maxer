@@ -794,6 +794,7 @@ function buyPack() {
   saveGame();
   openPackAnim(_pendingCard);
   updateUI();
+  if (window.mpEmit) mpEmit('pack', { id: card.id, dupe: !_pendingIsNew });
 }
 
 // Builds the inner HTML for a full card face — reused by pack reveal and burn bar.
@@ -1081,6 +1082,7 @@ function equipCard(cardId) {
     G.fieldSlot = cardId;
     applyFieldTheme();
     log(`⭐ Equipped <span>${card.name}</span> as Field`);
+    if (window.mpEmit) mpEmit('field', { id: cardId });
   } else {
     if (card.type !== 'Binder') { log(`⚠️ Binder slots only accept Binder cards.`); return; }
     G.binderSlots[_binderSelectedSlot] = cardId;
@@ -1417,6 +1419,7 @@ function activateFrenzy() {
   $frenzyText.classList.add('active');
   startFrenzyAudio();
   log('⚡ <span>SIGMA RIZZ FRENZY ACTIVATED! 10x MULTIPLIER!</span>');
+  if (window.mpEmit) mpEmit('frenzy');
 }
 
 function endFrenzy() {
@@ -1996,6 +1999,7 @@ function activateBurn(cardId) {
   G.burnCooldownUntil = now + BAL.BURN_GLOBAL_COOLDOWN_MS;
   showBurnToast(card.name);
   log(`🔥 Activated <span>${card.name}</span>!`);
+  if (window.mpEmit) mpEmit('burn', { id: cardId });
   const handler = EFFECT_HANDLERS[card.archetype];
   if (handler) handler(card, card.params || {});
   else log(`⚠️ No handler for ${card.archetype}`);
@@ -2772,6 +2776,7 @@ function _nyanCheckAudio() {
 function spawnNyanCat() {
   // Max 2 on screen at once
   if (document.querySelectorAll('.nyan-cat-run').length >= 2) return;
+  if (window.mpEmit) mpEmit('nyan');
 
   const el = document.createElement('div');
   el.className = 'nyan-cat-run';
@@ -3135,6 +3140,7 @@ function startBossFight() {
   renderBurnBar();   // nugget-only burns are blocked during the boss
   sfxRand(S.toilet, 0.8);
   log('🚽 <span>SKIBIDI TOILET ATTACK!</span> Click frantically to defeat!');
+  if (window.mpEmit) mpEmit('boss_start');
 }
 
 function endBossFight(victory) {
@@ -3157,6 +3163,7 @@ function endBossFight(victory) {
   }
   G.boss = null;
   renderBurnBar();
+  if (window.mpEmit) mpEmit('boss_end', { victory: !!victory });
 }
 
 $bossSprite.addEventListener('click', () => {
