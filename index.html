@@ -41,6 +41,22 @@
       height: 100vh;
       width: 100vw;
       user-select: none;
+      /* One filter built from per-source variables (Field theme, GigaChad, burn effects),
+         so no source overwrites another. Unset variables add nothing; all unset = no filter. */
+      filter: var(--f-theme,) var(--f-giga,) var(--f-retro,) var(--f-blur,) var(--f-scramble,);
+    }
+
+    /* Burn screen effects (classes with counters in game.js bodyFxFor) */
+    body.fx-retro {
+      --f-retro: sepia(1) hue-rotate(90deg);
+    }
+
+    body.fx-blur {
+      --f-blur: blur(var(--fx-blur, 2px));
+    }
+
+    body.fx-scramble {
+      --f-scramble: hue-rotate(180deg);
     }
 
     /* ── Skulls ── */
@@ -926,7 +942,7 @@
       left: 50%;
       bottom: clamp(-62px, -5vw, -38px);
       transform: translateX(-50%);
-      z-index: 90;
+      z-index: 450;   /* above #boss-overlay (400), below #burn-fx (500) and #moth-blackout (550) */
       display: none;
     }
 
@@ -974,10 +990,31 @@
       opacity: 0;
     }
 
-    .burn-card-wrap.disabled {
+    .burn-card-wrap.disabled,
+    .burn-card-wrap.blocked {
       cursor: not-allowed;
       opacity: 0.45;
       filter: grayscale(0.5);
+    }
+
+    /* Burn bar paging (more than BURN_INVENTORY_CAP burn types owned) */
+    .burn-page-btn {
+      align-self: center;
+      flex-shrink: 0;
+      margin: 0 6px 60px;
+      padding: 6px 10px;
+      font-size: 1.1rem;
+      color: #fff;
+      background: rgba(0, 0, 0, 0.6);
+      border: 1px solid rgba(255, 215, 0, 0.6);
+      border-radius: 8px;
+      cursor: pointer;
+      z-index: 30;
+    }
+
+    .burn-page-btn:disabled {
+      opacity: 0.3;
+      cursor: default;
     }
 
     /* ── Burn card hover preview — rises from the card's x-position, straight, flush at bottom ── */
@@ -985,7 +1022,7 @@
       position: fixed;
       bottom: 0;
       width: clamp(180px, 16vw, 250px);
-      z-index: 95;
+      z-index: 455;
       pointer-events: none;
       transform-origin: 50% 100%;
       transform: translateX(-50%) translateY(24px) scale(0.82);
@@ -1244,12 +1281,12 @@
 
     /* ── Field theme overlays (visual override when a Field card is equipped) ── */
     body.theme-sigma {
-      filter: grayscale(0.85);
+      --f-theme: grayscale(0.85);
     }
 
-    /* GigaChad binder card: full black and white */
+    /* GigaChad binder card: full black and white, under every Field and burn */
     body.gigachad-mode {
-      filter: grayscale(1);
+      --f-giga: grayscale(1);
     }
 
     body.theme-dark {
@@ -1382,7 +1419,7 @@
     }
 
     body.theme-fire {
-      filter: hue-rotate(-15deg) saturate(1.2);
+      --f-theme: hue-rotate(-15deg) saturate(1.2);
     }
 
     body.theme-fire #nugget-container,
@@ -1391,11 +1428,11 @@
     }
 
     body.theme-banana {
-      filter: sepia(0.3) hue-rotate(-15deg);
+      --f-theme: sepia(0.3) hue-rotate(-15deg);
     }
 
     body.theme-ohio {
-      filter: saturate(1.4) hue-rotate(10deg);
+      --f-theme: saturate(1.4) hue-rotate(10deg);
     }
 
     /* ── Boss overlay ── */
