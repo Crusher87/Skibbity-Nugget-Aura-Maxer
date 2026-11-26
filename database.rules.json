@@ -1,0 +1,21 @@
+{
+  "rules": {
+    "rooms": {
+      "$code": {
+        ".read": "auth != null && $code.matches(/^[A-Z]{4}$/)",
+        "players": {
+          "$uid": {
+            ".write": "auth != null && auth.uid === $uid && $code.matches(/^[A-Z]{4}$/)",
+            ".validate": "!newData.exists() || (newData.child('name').isString() && newData.child('name').val().length <= 16 && newData.child('emoji').isString() && newData.child('emoji').val().length <= 8)"
+          }
+        },
+        "events": {
+          "$eid": {
+            ".write": "auth != null && $code.matches(/^[A-Z]{4}$/) && ((!data.exists() && newData.child('from').val() === auth.uid) || (data.exists() && !newData.exists() && data.child('from').val() === auth.uid))",
+            ".validate": "!newData.exists() || (newData.child('kind').isString() && newData.child('kind').val().length <= 24)"
+          }
+        }
+      }
+    }
+  }
+}

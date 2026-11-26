@@ -2939,6 +2939,209 @@
         display: none;
       }
     }
+
+    /* ══ Play with a Buddy (multiplayer.js) ══ */
+    :root { --mp-w: clamp(300px, 40vw, 760px); --mp-strip-h: 56px; --mp-band-h: 34vh; }
+    body.mp-size-s { --mp-w: clamp(260px, 30vw, 560px); }
+    body.mp-size-l { --mp-w: clamp(340px, 50vw, 960px); }
+
+    #top-controls { flex-wrap: wrap; }
+    #mp-btn {
+      flex: 1 0 100%;
+      font-family: 'Bangers', cursive;
+      font-size: clamp(0.78rem, 0.95vw, 1rem);
+      padding: 6px 10px;
+      min-height: 36px;
+      background: rgba(0, 140, 255, 0.2);
+      border: 1px solid rgba(80, 180, 255, 0.5);
+      border-radius: 8px;
+      color: #8fd3ff;
+      cursor: pointer;
+      letter-spacing: 0.04em;
+      white-space: nowrap;
+    }
+    #mp-btn:hover { background: rgba(0, 150, 255, 0.4); }
+    body.mp-on #mp-btn { color: #fff; border-color: #55ff88; background: rgba(0, 200, 100, 0.25); }
+
+    /* Split mode: the body (which every fixed game element is positioned in) shrinks to the
+       left part of the screen, and the buddy panel sits just past its right edge. */
+    body.mp-split {
+      width: calc(100vw - var(--mp-w));
+      transform: translateZ(0);
+    }
+    /* The game was laid out for the whole screen (vw units); in split mode size its side
+       panels, title and nugget from the game area's width (--gw) instead, and keep the nugget
+       in the gap between the binder/rizz meter on the left and the shop on the right. */
+    @media (orientation: landscape) and (min-height: 501px) {
+    body.mp-split {
+      --gw: calc(100vw - var(--mp-w));
+      --left-w: clamp(200px, calc(var(--gw) * 0.2), 380px);
+      --shop-w: clamp(220px, calc(var(--gw) * 0.24), 520px);
+      --nugget-sz: max(140px, min(clamp(200px, 34vh, 560px), calc(var(--gw) - 2 * max(var(--left-w) + 90px, var(--shop-w)) - 16px)));
+    }
+    body.mp-split #aura-display h1 { font-size: clamp(1.6rem, calc(var(--gw) * 0.045), 6rem); }
+    body.mp-split #aura-amount { font-size: clamp(1.4rem, calc(var(--gw) * 0.032), 4.5rem); }
+    }
+    #mp-panel { display: none; }
+    body.mp-split #mp-panel {
+      display: flex;
+      flex-direction: column;
+      position: fixed;
+      top: 0;
+      left: 100%;
+      width: var(--mp-w);
+      height: 100vh;
+      z-index: 50;
+      background: linear-gradient(180deg, #14142b, #0d0d1c);
+      border-left: 3px solid rgba(80, 180, 255, 0.45);
+      color: #fff;
+      overflow: hidden;
+      container-type: inline-size;
+    }
+    #mp-strip { display: none; }
+    /* Everything inside scales with the panel's own width (cqw), so a bigger panel = bigger view */
+    #mp-inner { flex: 1; overflow-y: auto; padding: 0.8em; display: flex; flex-direction: column; gap: 0.6em; -webkit-overflow-scrolling: touch; font-size: clamp(12px, 3.3cqw, 24px); }
+    #mp-head { display: flex; align-items: center; gap: 0.5em; }
+    #mp-buddy-emoji { font-size: 1.8em; }
+    #mp-buddy-name { font-family: 'Bangers', cursive; font-size: 1.4em; letter-spacing: 0.04em; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .mp-dot { width: 0.65em; height: 0.65em; border-radius: 50%; background: #3f6; box-shadow: 0 0 8px #3f6; flex-shrink: 0; }
+    #mp-panel.mp-away .mp-dot { background: #777; box-shadow: none; }
+    #mp-panel.mp-away #mp-body { opacity: 0.45; filter: grayscale(0.8); }
+    .mp-room { font-size: 0.8em; color: #8fd3ff; white-space: nowrap; }
+    #mp-size-btn { min-width: 44px; min-height: 44px; font-size: 1.1em; border-radius: 10px; border: 1px solid rgba(80, 180, 255, 0.5); background: rgba(0, 140, 255, 0.15); color: #8fd3ff; cursor: pointer; }
+    #mp-waiting { text-align: center; padding: 1.2em 0.4em; color: #bbb; line-height: 1.5; }
+    #mp-waiting b { color: var(--gold); font-size: 1.8em; letter-spacing: 0.15em; display: block; }
+    #mp-body { display: flex; flex-direction: column; gap: 0.6em; transition: opacity 0.3s; }
+    .mp-col { display: flex; flex-direction: column; gap: 0.55em; min-width: 0; }
+    #mp-nugget-wrap { display: flex; justify-content: center; align-items: center; height: 5.2em; position: relative; }
+    #mp-nugget { font-size: 4.2em; position: relative; filter: drop-shadow(0 0 12px rgba(255, 200, 0, 0.6)); line-height: 1; }
+    #mp-nugget.mp-bounce { animation: mp-bounce 0.18s ease-out; }
+    #mp-nugget.mp-plus::after { content: attr(data-plus); position: absolute; right: -0.6em; top: -0.1em; font-size: 0.3em; color: var(--gold); font-family: 'Bangers', cursive; }
+    #mp-boss-chip { position: absolute; right: 0; top: 0; font-family: 'Bangers', cursive; color: #ff6b6b; font-size: 1.1em; }
+    #mp-boss-chip:empty { display: none; }
+    @keyframes mp-bounce { 0% { transform: scale(1); } 40% { transform: scale(0.82); } 100% { transform: scale(1); } }
+    .mp-aura { font-family: 'Bangers', cursive; font-size: 2.6em; text-align: center; color: var(--gold); text-shadow: 0 0 12px rgba(255, 215, 0, 0.5); line-height: 1; word-break: break-all; }
+    .mp-aura-label { text-align: center; font-size: 0.75em; color: #aaa; letter-spacing: 0.2em; margin-top: -0.4em; }
+    .mp-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.4em; text-align: center; }
+    .mp-stats > div { background: rgba(255, 255, 255, 0.06); border-radius: 0.5em; padding: 0.4em 0.1em; min-width: 0; }
+    .mp-stats b { display: block; font-size: 1.15em; color: #fff; overflow: hidden; text-overflow: ellipsis; }
+    .mp-stats span { font-size: 0.75em; color: #aaa; }
+    .mp-rizz-row { display: flex; align-items: center; gap: 0.5em; }
+    .mp-rizz-label { font-family: 'Bangers', cursive; font-size: 0.85em; color: #d98cff; letter-spacing: 0.1em; }
+    .mp-cps { flex: 1; height: 0.7em; border-radius: 0.35em; background: rgba(255, 255, 255, 0.08); overflow: hidden; }
+    #mp-cps-fill { height: 100%; width: 0; background: linear-gradient(90deg, #3cf, #f0f); transition: width 0.3s; }
+    #mp-cps { font-size: 0.75em; color: #aaa; min-width: 3.5em; text-align: right; }
+    #mp-badges { display: flex; flex-wrap: wrap; gap: 0.3em; }
+    #mp-badges:empty { display: none; }
+    .mp-badge { font-size: 0.8em; padding: 0.25em 0.6em; border-radius: 1em; background: rgba(255, 120, 0, 0.25); border: 1px solid rgba(255, 140, 0, 0.5); }
+    .mp-badge-frenzy { background: rgba(255, 215, 0, 0.3); border-color: var(--gold); animation: mp-pulse 0.6s infinite alternate; }
+    .mp-badge-boss { background: rgba(255, 40, 40, 0.3); border-color: #f44; animation: mp-pulse 0.6s infinite alternate; }
+    @keyframes mp-pulse { to { filter: brightness(1.5); } }
+    .mp-section { font-family: 'Bangers', cursive; letter-spacing: 0.12em; font-size: 0.85em; color: #8fd3ff; margin-top: 0.15em; }
+    #mp-field { display: flex; align-items: center; gap: 0.6em; }
+    .mp-field-name { font-size: 0.95em; }
+    #mp-binder { display: grid; grid-template-columns: repeat(5, 1fr); gap: 0.3em; }
+    .mp-thumb { aspect-ratio: 3 / 4; border-radius: 0.35em; overflow: hidden; background: rgba(255, 255, 255, 0.06); border: 2px solid rgba(255, 255, 255, 0.15); display: flex; align-items: center; justify-content: center; font-size: 1.5em; }
+    .mp-thumb img { width: 100%; height: 100%; object-fit: cover; }
+    .mp-thumb.mp-field-card { width: 3.6em; flex-shrink: 0; font-size: 1em; }
+    .mp-thumb.mp-empty { color: #555; }
+    .mp-thumb.mp-r-common { border-color: var(--common); }
+    .mp-thumb.mp-r-uncommon { border-color: var(--uncommon); }
+    .mp-thumb.mp-r-rare { border-color: var(--rare); }
+    .mp-thumb.mp-r-mythic-rare { border-color: var(--gold); box-shadow: 0 0 6px var(--gold); }
+    #mp-sauces { display: flex; flex-wrap: wrap; gap: 0.6em; font-size: 0.95em; }
+    .mp-dim { color: #999; font-size: 0.85em; }
+    #mp-feed { display: flex; flex-direction: column; gap: 0.3em; }
+    .mp-feed-item { font-size: 0.85em; background: rgba(255, 255, 255, 0.05); border-radius: 0.4em; padding: 0.35em 0.5em; line-height: 1.3; }
+    .mp-feed-item:first-child { animation: mp-in 0.3s ease-out; }
+    @keyframes mp-in { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: none; } }
+    span.mp-r-common { color: var(--common); } span.mp-r-uncommon { color: var(--uncommon); }
+    span.mp-r-rare { color: #d070ff; } span.mp-r-mythic-rare { color: var(--gold); font-weight: bold; }
+    /* Buddy's Field theme tints their panel */
+    #mp-panel[data-field="f1"] { background: linear-gradient(180deg, #2b1b10, #0d0d1c); }
+    #mp-panel[data-field="f2"] { background: linear-gradient(180deg, #102b22, #0d0d1c); }
+    #mp-panel[data-field="f3"] { background: linear-gradient(180deg, #2a1033, #101a33); }
+    #mp-panel[data-field="f4"] { background: linear-gradient(180deg, #050508, #000); }
+    #mp-panel[data-field="f5"] { background: linear-gradient(180deg, #3a1505, #140805); }
+    #mp-panel[data-field="f6"] { background: linear-gradient(180deg, #33300a, #0d0d1c); }
+    #mp-panel.mp-flash-gold { animation: mp-flash-gold 1.6s ease-out; }
+    #mp-panel.mp-flash-purple { animation: mp-flash-purple 1.6s ease-out; }
+    #mp-panel.mp-flash-red { animation: mp-flash-red 1.6s ease-out; }
+    @keyframes mp-flash-gold { 0%, 30% { box-shadow: inset 0 0 60px rgba(255, 215, 0, 0.9); } 100% { box-shadow: none; } }
+    @keyframes mp-flash-purple { 0%, 30% { box-shadow: inset 0 0 60px rgba(180, 60, 255, 0.8); } 100% { box-shadow: none; } }
+    @keyframes mp-flash-red { 0%, 30% { box-shadow: inset 0 0 60px rgba(255, 40, 40, 0.8); } 100% { box-shadow: none; } }
+    .mp-nyan { position: absolute; top: 30%; left: -120px; width: 110px; pointer-events: none; animation: mp-nyan 3s linear forwards; z-index: 5; }
+    @keyframes mp-nyan { to { left: 110%; } }
+
+    /* Wide panel: stats on the left, cards on the right, feed below */
+    @container (min-width: 560px) {
+      #mp-inner { font-size: clamp(12px, 2.4cqw, 22px); }
+      #mp-body { flex-direction: row; align-items: flex-start; gap: 1em; }
+      #mp-body > .mp-col { flex: 1; }
+    }
+
+    /* Pairing window */
+    #mp-modal { position: fixed; inset: 0; z-index: 820; background: rgba(0, 0, 0, 0.82); display: none; align-items: center; justify-content: center; padding: 16px; }
+    #mp-modal.active { display: flex; }
+    #mp-modal-box { background: #1b1b36; border: 2px solid rgba(80, 180, 255, 0.5); border-radius: 16px; padding: 20px; width: min(380px, 100%); max-height: 92vh; overflow-y: auto; color: #fff; text-align: center; }
+    #mp-modal-box h2 { font-family: 'Bangers', cursive; letter-spacing: 0.06em; color: #8fd3ff; margin-bottom: 12px; font-size: 1.8rem; }
+    #mp-modal-body { display: flex; flex-direction: column; gap: 10px; }
+    .mp-label { text-align: left; font-size: 0.85rem; color: #aaa; }
+    .mp-input { font-family: inherit; font-size: 1.1rem; padding: 10px 12px; border-radius: 10px; border: 2px solid rgba(255, 255, 255, 0.2); background: rgba(0, 0, 0, 0.35); color: #fff; width: 100%; min-height: 48px; user-select: text; }
+    .mp-code-input { text-transform: uppercase; letter-spacing: 0.3em; text-align: center; font-family: 'Bangers', cursive; font-size: 1.5rem; }
+    .mp-emojis { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; }
+    .mp-emoji { font-size: 1.6rem; min-height: 48px; border-radius: 10px; border: 2px solid transparent; background: rgba(255, 255, 255, 0.07); cursor: pointer; }
+    .mp-emoji.sel { border-color: var(--gold); background: rgba(255, 215, 0, 0.18); }
+    .mp-btn { font-family: 'Bangers', cursive; letter-spacing: 0.05em; font-size: 1.15rem; min-height: 48px; padding: 8px 16px; border-radius: 10px; border: 2px solid rgba(80, 180, 255, 0.6); background: rgba(0, 140, 255, 0.25); color: #fff; cursor: pointer; flex: 1; }
+    .mp-btn-big { font-size: 1.4rem; background: rgba(0, 200, 100, 0.3); border-color: #55ff88; }
+    .mp-btn-red { background: rgba(220, 30, 30, 0.25); border-color: rgba(255, 80, 80, 0.6); }
+    .mp-btn-ghost { background: transparent; border-color: rgba(255, 255, 255, 0.2); color: #aaa; }
+    .mp-row { display: flex; gap: 8px; }
+    .mp-or { color: #888; font-size: 0.85rem; }
+    .mp-status { color: #ffb347; min-height: 1.2em; font-size: 0.9rem; }
+    .mp-code-big { font-family: 'Bangers', cursive; font-size: 3.4rem; letter-spacing: 0.25em; color: var(--gold); line-height: 1; padding-left: 0.25em; }
+    #mp-qr { display: flex; justify-content: center; }
+    #mp-qr img, #mp-qr canvas { background: #fff; padding: 8px; border-radius: 8px; }
+
+    /* Strip mode (portrait phones, and phones on their side): a strip across the top
+       that opens into a sheet, so the game keeps its full width */
+    @media (max-width:767px) and (orientation:portrait), (max-height:500px) and (orientation:landscape) {
+      body.mp-split { --gw: 100vw; width: 100vw; height: calc(100vh - var(--mp-strip-h)); margin-top: var(--mp-strip-h); }
+      body.mp-split #mp-panel { top: calc(-1 * var(--mp-strip-h)); left: 0; width: 100%; height: var(--mp-strip-h); border-left: none; border-bottom: 3px solid rgba(80, 180, 255, 0.45); z-index: 700; transition: height 0.25s; }
+      body.mp-split.mp-open #mp-panel { height: 80vh; }
+      #mp-strip { display: flex; align-items: center; gap: 8px; height: var(--mp-strip-h); flex-shrink: 0; padding: 0 14px; cursor: pointer; font-size: 0.95rem; }
+      #mp-strip-text { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .mp-chev { font-size: 1.2rem; transition: transform 0.25s; }
+      body.mp-open .mp-chev { transform: rotate(180deg); }
+      body.mp-split:not(.mp-open) #mp-inner { display: none; }
+      #mp-size-btn { display: none; }
+      #mp-inner { font-size: clamp(13px, 4cqw, 18px); }
+    }
+    @media (max-height:500px) and (orientation:landscape) {
+      :root { --mp-strip-h: 40px; }
+      body.mp-split.mp-open #mp-panel { height: 92vh; }
+      body.mp-split #mp-inner { font-size: clamp(12px, 2.2cqw, 16px); }
+      body.mp-split #mp-body { flex-direction: row; gap: 1em; }
+      body.mp-split #mp-body > .mp-col { flex: 1; }
+    }
+
+    /* Portrait tablets: the buddy gets a band across the top, laid out side to side */
+    @media (min-width:768px) and (orientation:portrait) {
+      body.mp-split { --mp-band-h: 38vh; }
+      body.mp-split.mp-size-s { --mp-band-h: 31vh; }
+      body.mp-split.mp-size-l { --mp-band-h: 46vh; }
+      body.mp-split { width: 100vw; height: calc(100vh - var(--mp-band-h)); margin-top: var(--mp-band-h); }
+      body.mp-split #mp-panel { top: calc(-1 * var(--mp-band-h)); left: 0; width: 100%; height: var(--mp-band-h); border-left: none; border-bottom: 3px solid rgba(80, 180, 255, 0.45); }
+      #mp-inner { display: grid; grid-template-columns: 1fr 1fr 1fr; grid-template-rows: auto 1fr; column-gap: 1em; font-size: clamp(12px, 1.9cqw, 20px); overflow: hidden; }
+      #mp-head, #mp-waiting { grid-column: 1 / -1; }
+      #mp-body { grid-column: 1 / 3; flex-direction: row; gap: 1em; min-height: 0; overflow-y: auto; }
+      #mp-body > .mp-col { flex: 1; }
+      .mp-col-feed { min-height: 0; overflow-y: auto; }
+      #mp-nugget-wrap { height: 3.6em; } #mp-nugget { font-size: 3em; }
+      body.mp-split { --gw: 100vw; --left-w: clamp(200px, 24vw, 260px); --shop-w: clamp(220px, 30vw, 300px);
+        --nugget-sz: max(150px, min(calc((100vh - var(--mp-band-h)) * 0.34), calc(100vw - 2 * max(var(--left-w) + 90px, var(--shop-w)) - 16px))); }
+    }
+
   </style>
 </head>
 
@@ -3085,6 +3288,7 @@
     <div id="top-controls">
       <button id="save-btn" onclick="manualSave()">💾 SAVE</button>
       <button id="new-game-btn" onclick="openNewGameConfirm()">💀 NEW GAME</button>
+      <button id="mp-btn" title="Play with a buddy">👥 BUDDY</button>
     </div>
   </div>
 
@@ -3160,10 +3364,58 @@
     <div id="binder-grid"></div>
   </div>
 
+  <!-- Play with a Buddy (multiplayer.js) -->
+  <div id="mp-panel">
+    <div id="mp-strip" onclick="MP.togglePanelOpen()"><span id="mp-strip-text">Buddy</span><span class="mp-chev">▾</span></div>
+    <div id="mp-inner">
+      <div id="mp-head">
+        <span id="mp-buddy-emoji">⏳</span><span id="mp-buddy-name">Waiting for buddy…</span>
+        <span class="mp-dot"></span><span class="mp-room">Room <b id="mp-room-code"></b></span>
+        <button id="mp-size-btn" onclick="MP.cycleSize()" title="Make the buddy view bigger or smaller">⇔</button>
+      </div>
+      <div id="mp-waiting">Tell your buddy this code:<b id="mp-waiting-code"></b>They tap 👥 BUDDY, then Join.</div>
+      <div id="mp-body" style="display:none">
+        <div class="mp-col mp-col-a">
+          <div id="mp-nugget-wrap"><div id="mp-nugget">🍗</div><div id="mp-boss-chip"></div></div>
+          <div id="mp-aura" class="mp-aura">0</div>
+          <div class="mp-aura-label">AURA</div>
+          <div class="mp-stats">
+            <div><b id="mp-aps">0</b><span>/sec</span></div>
+            <div><b id="mp-apc">0</b><span>/click</span></div>
+            <div><b id="mp-kek">0</b><span>👑 Kek</span></div>
+          </div>
+          <div class="mp-rizz-row"><span class="mp-rizz-label">RIZZ</span><div class="mp-cps"><div id="mp-cps-fill"></div></div><span id="mp-cps">0.0/s</span></div>
+          <div id="mp-badges"></div>
+        </div>
+        <div class="mp-col mp-col-b">
+          <div class="mp-section">FIELD</div>
+          <div id="mp-field"></div>
+          <div class="mp-section">BINDER</div>
+          <div id="mp-binder"></div>
+          <div class="mp-section">SAUCES</div>
+          <div id="mp-sauces"></div>
+          <div id="mp-cards" class="mp-dim"></div>
+        </div>
+      </div>
+      <div class="mp-col mp-col-feed">
+        <div class="mp-section">FEED</div>
+        <div id="mp-feed"></div>
+      </div>
+    </div>
+  </div>
+  <div id="mp-modal" onclick="if (event.target === this) MP.close()">
+    <div id="mp-modal-box">
+      <h2>👥 Play with a Buddy</h2>
+      <div id="mp-modal-body"></div>
+    </div>
+  </div>
+
   <!-- Three.js -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
   <script src="game.js"></script>
+  <script src="firebase-config.js"></script>
+  <script src="multiplayer.js"></script>
 </body>
 
 </html>
