@@ -312,7 +312,7 @@
   const RARITY_LABEL = { common: 'Common', uncommon: 'Uncommon', rare: 'RARE', 'mythic-rare': 'MYTHIC' };
 
   function onEvent(ev) {
-    const who = `<b>${esc((buddy && buddy.name) || 'Buddy')}</b>`;
+    const who = `<b>${esc((buddy && buddy.name) || ev.name || 'Buddy')}</b>`;
     const d = ev.data || {};
     switch (ev.kind) {
       case 'pack': {
@@ -339,7 +339,7 @@
 
   // Called from game.js hook points.
   window.mpEmit = function (kind, data) {
-    try { if (transport && room) { transport.send({ kind, data: data || {} }); sendNow(); } } catch (_) { }
+    try { if (transport && room) { transport.send({ kind, data: data || {}, name: profile.name, emoji: profile.emoji }); sendNow(); } } catch (_) { }
   };
 
   function addFeed(html) {
