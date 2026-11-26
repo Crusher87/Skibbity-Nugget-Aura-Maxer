@@ -70,9 +70,10 @@ const HIT = { skilled: 0.9, casual: 0.5 };       // hit / success rate for skill
 // Reference states (plan §3.1). uniqueOwned / brainMinutes are extra
 // assumptions needed by Success Kid and Expanding Brain.
 const REF_STATES = [
-  { name: 'Early', owned: { ketchup: 10, ranch: 2, szechuan: 0, grimace: 0, sigma: 0 }, uniqueOwned: 10, brainMinutes: 10 },
-  { name: 'Mid', owned: { ketchup: 40, ranch: 20, szechuan: 5, grimace: 2, sigma: 0 }, uniqueOwned: 30, brainMinutes: 40 },
-  { name: 'Late', owned: { ketchup: 80, ranch: 50, szechuan: 20, grimace: 15, sigma: 3 }, uniqueOwned: 50, brainMinutes: 120 },
+  // SAUCE counts from tools/progress-sim.js (Active profile, 6 clicks/s): ~10 min, ~45 min, ~4 h.
+  { name: 'Early', owned: { ketchup: 14, ranch: 11, szechuan: 3, grimace: 0, sigma: 0 }, uniqueOwned: 7, brainMinutes: 10 },
+  { name: 'Mid', owned: { ketchup: 29, ranch: 27, szechuan: 16, grimace: 8, sigma: 0 }, uniqueOwned: 26, brainMinutes: 40 },
+  { name: 'Late', owned: { ketchup: 56, ranch: 53, szechuan: 37, grimace: 33, sigma: 11 }, uniqueOwned: 59, brainMinutes: 120 },
 ];
 // Kek-cost reference packs (plan §3.3): the Nth pack bought.
 const REF_PACKS = [10, 30];
@@ -153,22 +154,22 @@ function getFieldMult(G) {
 function computeEAS(G) {
   const bs = getBinderStats(G);
   const aps = (G.auraPerSecond + bs.addAps) * G.apsMultValue;
-  return Math.max(1, aps * (G.allAuraMult + bs.addMult + getFieldMult(G)));
+  return Math.max(1, aps * G.allAuraMult * (1 + bs.addMult + getFieldMult(G)));
 }
 // Mirrors computeBaseEAS() — no temporary APS mult. Every one-shot payout reads this (B1.3).
 function computeBaseEAS(G) {
   const bs = getBinderStats(G);
-  return Math.max(1, (G.auraPerSecond + bs.addAps) * (G.allAuraMult + bs.addMult + getFieldMult(G)));
+  return Math.max(1, (G.auraPerSecond + bs.addAps) * G.allAuraMult * (1 + bs.addMult + getFieldMult(G)));
 }
 // Mirrors the `earned` line in doClick() with clickMult = 1, no crit, no frenzy.
 function clickValue(G) {
   const bs = getBinderStats(G);
-  return (G.auraPerClick + bs.addApc) * (G.allAuraMult + bs.addMult + getFieldMult(G));
+  return (G.auraPerClick + bs.addApc) * G.allAuraMult * (1 + bs.addMult + getFieldMult(G));
 }
 // Mirrors the passive tick in gameLoop(): Aura/sec from APS (no frenzy).
 function apsIncome(G) {
   const bs = getBinderStats(G);
-  return (G.auraPerSecond + bs.addAps) * G.apsMultValue * (G.allAuraMult + bs.addMult + getFieldMult(G));
+  return (G.auraPerSecond + bs.addAps) * G.apsMultValue * G.allAuraMult * (1 + bs.addMult + getFieldMult(G));
 }
 
 // ---------- 4. Kek Koin mirrors ----------
@@ -454,7 +455,7 @@ table(['Card', 'id', 'R', 'Archetype', 'Early APS/APC/Total', 'Mid APS/APC/Total
 
 // (d) field
 P('## (d) Field cards');
-P('Field mult is additive with the SAUCE global mult (getFieldMult + allAuraMult), so its relative value shrinks once Sigma Glaze is bought.');
+P('Field and Binder % bonuses multiply the SAUCE global mult (allAuraMult × (1 + addMult + field)), so they keep their stated value after Sigma Glaze.');
 P('');
 // tickKekCoins(): resting nugget coins auto-collect after KEK_IDLE_TIMEOUT_S, except under Sigma Slam.
 const KEK_IDLE_S = Number((/const KEK_IDLE_TIMEOUT_S\s*=\s*([0-9.]+)/.exec(SRC) || [])[1]) || 20;

@@ -101,12 +101,14 @@ const G = {
 };
 
 // --- Upgrades ---
+// SAUCE curve (docs/balance/SAUCE.md, tools/progress-sim.js): at 6 clicks/s with cards, events and frenzy,
+// first buys land around 0.3 / 3 / 6 / 13 / 45 min and every tier stays worth buying.
 const UPGRADES = [
-  { id: 'ketchup', name: '🍅 Ketchup', rarity: 'common', type: 'passive', desc: '+1 Aura/sec', effect: 'aps', value: 1, baseCost: 150, scale: 1.15 },
-  { id: 'ranch', name: '🥗 Sus Ranch', rarity: 'uncommon', type: 'passive', desc: '+15 Aura/sec', effect: 'aps', value: 15, baseCost: 3000, scale: 1.18 },
-  { id: 'szechuan', name: '🌶️ Szechuan Synergy', rarity: 'rare', type: 'active', desc: '+10 Aura/click', effect: 'apc', value: 10, baseCost: 75000, scale: 1.20 },
-  { id: 'grimace', name: '👿 Grimace Extract', rarity: 'epic', type: 'passive', desc: '+200 Aura/sec', effect: 'aps', value: 200, baseCost: 3000000, scale: 1.25 },
-  { id: 'sigma', name: '💎 Sigma Ohio Rizz Glaze', rarity: 'legendary', type: 'mult', desc: '+0.5x Global Multiplier', effect: 'mult', value: 0.5, baseCost: 100000000, scale: 1.50 },
+  { id: 'ketchup', name: '🍅 Ketchup', rarity: 'common', type: 'passive', desc: '+1 Aura/sec', effect: 'aps', value: 1, baseCost: 100, scale: 1.15 },
+  { id: 'ranch', name: '🥗 Sus Ranch', rarity: 'uncommon', type: 'passive', desc: '+8 Aura/sec', effect: 'aps', value: 8, baseCost: 1100, scale: 1.15 },
+  { id: 'szechuan', name: '🌶️ Szechuan Synergy', rarity: 'rare', type: 'active', desc: '+4 Aura/click', effect: 'apc', value: 4, baseCost: 15000, scale: 1.22 },
+  { id: 'grimace', name: '👿 Grimace Extract', rarity: 'epic', type: 'passive', desc: '+75 Aura/sec', effect: 'aps', value: 75, baseCost: 130000, scale: 1.16 },
+  { id: 'sigma', name: '💎 Sigma Ohio Rizz Glaze', rarity: 'legendary', type: 'mult', desc: '+0.5x Global Multiplier', effect: 'mult', value: 0.5, baseCost: 3000000, scale: 1.40 },
 ];
 
 function getCost(u) {
@@ -1333,7 +1335,7 @@ function doClick(cx, cy) {
     spawnParticle(cx, cy - 50, '👊 x2');
   }
   clickMult = Math.min(BAL.CLICK_TOTAL_CAP, clickMult);
-  const clickBase = (G.auraPerClick + bs.addApc) * (G.allAuraMult + bs.addMult + fieldMult);
+  const clickBase = (G.auraPerClick + bs.addApc) * G.allAuraMult * (1 + bs.addMult + fieldMult);
   let earned = clickBase * clickMult;
   if (G.frenzyActive) earned *= 10;
   G.aura += earned;
@@ -1589,7 +1591,7 @@ function updateUI() {
   const bs = getBinderStats();
   const fieldMult = getFieldMult();
   const apsMult = apsBuffMult();
-  const effectiveMult = (G.allAuraMult + bs.addMult + fieldMult) * (G.frenzyActive ? 10 : 1);
+  const effectiveMult = G.allAuraMult * (1 + bs.addMult + fieldMult) * (G.frenzyActive ? 10 : 1);
   const effectiveApc = G.auraPerClick + bs.addApc;
   const effectiveAps = (G.auraPerSecond + bs.addAps) * apsMult;
   $auraAmt.textContent = fmt(G.aura);
@@ -1667,7 +1669,7 @@ function gameLoop() {
   const bs = getBinderStats();
   const fieldMult = getFieldMult();
   const apsMult = apsBuffMult();
-  const effectiveMult = (G.allAuraMult + bs.addMult + fieldMult) * (G.frenzyActive ? 10 : 1);
+  const effectiveMult = G.allAuraMult * (1 + bs.addMult + fieldMult) * (G.frenzyActive ? 10 : 1);
   const effectiveAps = (G.auraPerSecond + bs.addAps) * apsMult;
   G.aura += effectiveAps * effectiveMult * dt;
   // Expanding Brain: only minutes played with it slotted count (hidden tabs are skipped above)
@@ -1855,7 +1857,7 @@ function computeEAS() {
   const bs = getBinderStats();
   const fieldMult = getFieldMult();
   const aps = (G.auraPerSecond + bs.addAps) * apsBuffMult();
-  const mult = (G.allAuraMult + bs.addMult + fieldMult);
+  const mult = G.allAuraMult * (1 + bs.addMult + fieldMult);
   return Math.max(1, aps * mult);   // floor at 1 so early game still pays out
 }
 
@@ -1865,7 +1867,7 @@ function computeBaseEAS() {
   const bs = getBinderStats();
   const fieldMult = getFieldMult();
   const aps = (G.auraPerSecond + bs.addAps);   // no temp APS buffs
-  const mult = (G.allAuraMult + bs.addMult + fieldMult);
+  const mult = G.allAuraMult * (1 + bs.addMult + fieldMult);
   return Math.max(1, aps * mult);
 }
 
@@ -2314,7 +2316,7 @@ const EFFECT_HANDLERS = {
       setTimeout(() => {
         const bs = getBinderStats();
         const fieldMult = getFieldMult();
-        const earned = (G.auraPerClick + bs.addApc) * (G.allAuraMult + bs.addMult + fieldMult) * (p.mult || 1);
+        const earned = (G.auraPerClick + bs.addApc) * G.allAuraMult * (1 + bs.addMult + fieldMult) * (p.mult || 1);
         G.aura += earned;
         const e = Math.min(p.easPerClick || 0, (p.capEAS || 0) - paid);
         if (e > 0) { paid += e; G.aura += e * computeBaseEAS(); }

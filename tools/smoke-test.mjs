@@ -133,7 +133,7 @@ const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 async function noPassive(page) {
   await page.evaluate(() => {
     window._realApsBuffMult = window._realApsBuffMult || apsBuffMult; apsBuffMult = () => 0; G.frenzyCooldown = 1e9;
-    window._cv = () => { const bs = getBinderStats(); return (G.auraPerClick + bs.addApc) * (G.allAuraMult + bs.addMult + getFieldMult()); };
+    window._cv = () => { const bs = getBinderStats(); return (G.auraPerClick + bs.addApc) * G.allAuraMult * (1 + bs.addMult + getFieldMult()); };
   });
 }
 // Activates a burn and plays it with a MutationObserver: 'hit' answers every prompt / clicks every
@@ -294,7 +294,7 @@ const BATCH_TESTS = {
       G.clickBuffs.forEach(b => { b.easPerClick = 0; });   // multiplier check only (B4 D6 bonus is flat, B4 checks it)
       G.binderSlots = ['bi_r1', null, null, null, null]; G.critClickCounter = 9; G.frenzyActive = true;
       const bs = getBinderStats();
-      const base = (G.auraPerClick + bs.addApc) * (G.allAuraMult + bs.addMult + getFieldMult());
+      const base = (G.auraPerClick + bs.addApc) * G.allAuraMult * (1 + bs.addMult + getFieldMult());
       const a0 = G.aura; doClick(x, y);
       G.frenzyActive = false; G.binderSlots = [null, null, null, null, null]; G.clickBuffs = [];
       return (G.aura - a0) / base;
@@ -312,7 +312,7 @@ const BATCH_TESTS = {
     check('B1 Gyatt then SWK: Gyatt timer not extended, buffs 101×', r.mult === 101 && r.gy <= 3, JSON.stringify(r));
     r = await page.evaluate(([x, y]) => {
       const bs = getBinderStats();
-      const base = (G.auraPerClick + bs.addApc) * (G.allAuraMult + bs.addMult + getFieldMult());
+      const base = (G.auraPerClick + bs.addApc) * G.allAuraMult * (1 + bs.addMult + getFieldMult());
       const a0 = G.aura; G.frenzyActive = false; G.doubleNextClick = true;
       doClick(x, y);
       return (G.aura - a0) / base;
@@ -329,7 +329,7 @@ const BATCH_TESTS = {
       G.clickBuffs.find(b => b.src === 'bu_u6').easPerClick = 0;   // multiplier check only (Surgery's D6 is checked in B5)
       const k0 = G.kekCoins;
       const bs = getBinderStats();
-      const base = (G.auraPerClick + bs.addApc) * (G.allAuraMult + bs.addMult + getFieldMult());
+      const base = (G.auraPerClick + bs.addApc) * G.allAuraMult * (1 + bs.addMult + getFieldMult());
       let a0 = G.aura; doClick(x + w * 0.3, y); const miss = (G.aura - a0) / base;
       a0 = G.aura; doClick(x, y); const hitEAS = G.aura - a0;
       for (let i = 0; i < 199; i++) doClick(x, y);
@@ -1031,7 +1031,7 @@ const BATCH_TESTS = {
       window._reset(); window._cvPlain = window._cv();
       window._clicks = (n) => { G.clickBuffs.forEach(b => { b.easPerClick = 0; }); const a0 = G.aura; for (let i = 0; i < n; i++) doClick(x, y); return (G.aura - a0) / window._cvPlain; };
       // Passive income per second, as gameLoop ticks it (real apsBuffMult)
-      window._rate = () => { const bs = getBinderStats(); return (G.auraPerSecond + bs.addAps) * window._realApsBuffMult() * (G.allAuraMult + bs.addMult + getFieldMult()); };
+      window._rate = () => { const bs = getBinderStats(); return (G.auraPerSecond + bs.addAps) * window._realApsBuffMult() * G.allAuraMult * (1 + bs.addMult + getFieldMult()); };
     }, [c.x, c.y]);
     const row = (n, name, combo, best, detail) => { const x = combo / best; check(`COMBO ${n} ${name}: ${x.toFixed(2)}× the best single play (≤ 3×)`, x <= 3 + 1e-9, detail); return x; };
     let r;
