@@ -44,6 +44,7 @@
       color: #fff;
       overflow: hidden;
       height: 100vh;
+      height: 100dvh;
       width: 100vw;
       user-select: none;
       -webkit-user-select: none;
@@ -3103,10 +3104,17 @@
     #mp-qr { display: flex; justify-content: center; }
     #mp-qr img, #mp-qr canvas { background: #fff; padding: 8px; border-radius: 8px; }
 
+    /* Phones: Save / New Game / Buddy stay pinned at the bottom of the shop in one row,
+       instead of sitting below the upgrade list where you have to scroll to find them */
+    @media (max-width:767px) and (orientation:portrait) {
+      #shop-panel #top-controls { position: sticky; bottom: -8px; z-index: 2; flex-wrap: nowrap; margin-top: auto; padding: 6px 0 8px; background: linear-gradient(0deg, rgba(14, 14, 30, 0.98) 80%, rgba(14, 14, 30, 0)); }
+      #shop-panel #top-controls button { flex: 1 1 0; min-height: 44px; min-width: 0; padding: 6px 4px; font-size: 0.85rem; }
+    }
+
     /* Strip mode (portrait phones, and phones on their side): a strip across the top
        that opens into a sheet, so the game keeps its full width */
     @media (max-width:767px) and (orientation:portrait), (max-height:500px) and (orientation:landscape) {
-      body.mp-split { --gw: 100vw; width: 100vw; height: calc(100vh - var(--mp-strip-h)); margin-top: var(--mp-strip-h); }
+      body.mp-split { --gw: 100vw; width: 100vw; height: calc(100vh - var(--mp-strip-h)); height: calc(100dvh - var(--mp-strip-h)); margin-top: var(--mp-strip-h); }
       body.mp-split #mp-panel { top: calc(-1 * var(--mp-strip-h)); left: 0; width: 100%; height: var(--mp-strip-h); border-left: none; border-bottom: 3px solid rgba(80, 180, 255, 0.45); z-index: 700; transition: height 0.25s; }
       body.mp-split.mp-open #mp-panel { height: 80vh; }
       #mp-strip { display: flex; align-items: center; gap: 8px; height: var(--mp-strip-h); flex-shrink: 0; padding: 0 14px; cursor: pointer; font-size: 0.95rem; }

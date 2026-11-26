@@ -966,9 +966,21 @@ function binderLabelClick() {
     _binderLabelClicks = 0;
     const btn = document.getElementById('dev-menu-btn');
     btn.style.display = btn.style.display === 'none' ? 'inline-block' : 'none';
-    log(btn.style.display !== 'none' ? '🛠️ <span>Dev menu unlocked!</span>' : '🛠️ <span>Dev menu hidden.</span>');
+    const on = btn.style.display !== 'none';
+    try { on ? localStorage.setItem('nugget_dev', '1') : localStorage.removeItem('nugget_dev'); } catch (_) { }
+    log(on ? '🛠️ <span>Dev menu unlocked!</span> Tap SAUCES 5× for +1M Aura, CARDS 5× for Kek.' : '🛠️ <span>Dev menu hidden.</span>');
+    if (typeof showBurnToast === 'function') showBurnToast(on ? '🛠️ DEV CHEATS ON' : '🛠️ DEV CHEATS OFF');
   }
 }
+// The ACTIVE BINDER label is hidden on phones, so tapping the ✨ AURA ✨ title 5× also toggles it.
+// The unlock is remembered on this device.
+(() => {
+  const h = document.querySelector('#aura-display h1');
+  if (h) h.addEventListener('click', binderLabelClick);
+  try {
+    if (localStorage.getItem('nugget_dev') === '1') document.getElementById('dev-menu-btn').style.display = 'inline-block';
+  } catch (_) { }
+})();
 
 let _devFilter = 'all';
 
