@@ -21,6 +21,8 @@
   const LS_ROOM = 'nugget_mp_room';
   const LS_PID = 'nugget_mp_pid';
   const LS_HIDE = 'nugget_mp_hidden';
+  const LS_SIZE = 'nugget_mp_size';
+  const SIZES = ['s', 'm', 'l'];
   const SEND_MS = 330;          // state send interval
   const HEARTBEAT_MS = 2000;    // send even if nothing changed
   const AWAY_MS = 8000;         // no state for this long = buddy away
@@ -180,6 +182,8 @@
       owned: G.owned || {},
       frenzy: !!G.frenzyActive,
       boss: !!(G.boss && G.boss.active),
+      drain: G.boss && G.boss.active ? Math.round((G.boss.drainAccumPct || 0) * 100) : 0,
+      rizz: Math.round((G.frenzyMeter || 0) * 100) / 100,
       burns,
       packs: G.packsPurchased || 0,
       uniq: Object.keys(G.collection || {}).length,
@@ -380,6 +384,7 @@
     const key = JSON.stringify([b.field, b.binder, b.owned, b.frenzy, b.boss, b.burns]);
     if (key !== lastStaticKey) {
       lastStaticKey = key;
+      if (b.field) p.dataset.field = b.field; else delete p.dataset.field;
       $('mp-field').innerHTML = cardThumb(b.field, 'mp-field-card') +
         `<div class="mp-field-name">${b.field ? esc(cardName(b.field)) : 'No Field card'}</div>`;
       $('mp-binder').innerHTML = (b.binder && b.binder.length ? b.binder : [null, null, null, null, null]).map(id => cardThumb(id)).join('');
@@ -399,6 +404,7 @@
     $('mp-aps').textContent = num(b.aps || 0);
     $('mp-apc').textContent = num(b.apc || 0);
     $('mp-cards').textContent = `${b.uniq || 0} cards · ${b.packs || 0} packs`;
+    $('mp-boss-chip').textContent = b.boss ? `🚽 ${b.drain || 0}%` : '';
     renderTick();
   }
 
@@ -412,8 +418,11 @@
     const aura = (buddy.aura || 0) + (buddy.aps || 0) * dt;
     el.textContent = num(aura);
     const cps = online ? buddyCps : 0;
-    $('mp-cps-fill').style.width = Math.min(100, cps / 12 * 100) + '%';
-    $('mp-cps').textContent = cps.toFixed(1) + ' clicks/s';
+    // Rizz meter: the buddy's own frenzy meter when sent, else their click speed vs the frenzy threshold
+    const thr = (typeof BAL !== 'undefined' && BAL.FRENZY_THRESHOLD_CPS) || 7;
+    const rizz = !online ? 0 : buddy.frenzy ? 1 : Math.max(typeof buddy.rizz === 'number' ? buddy.rizz : 0, Math.min(1, cps / thr));
+    $('mp-cps-fill').style.width = (rizz * 100) + '%';
+    $('mp-cps').textContent = cps.toFixed(1) + '/s';
     $('mp-strip-text').textContent = `${buddy.emoji || '🙂'} ${buddy.name || 'Buddy'}: ${num(aura)} Aura · +${num(buddy.aps || 0)}/s${online ? '' : ' (away)'}`;
     const p = $('mp-panel');
     if (p) p.classList.toggle('mp-away', !online);
@@ -451,6 +460,12 @@
     document.body.classList.toggle('mp-hidden', hidden);
     document.body.classList.toggle('mp-split', !!room && !hidden);
     const t = $('mp-hide-btn'); if (t) t.textContent = hidden ? '👥 Show buddy' : '🙈 Hide buddy';
+    kickResize();
+  }
+  function applySize() {
+    const sz = SIZES.includes(lsGet(LS_SIZE)) ? lsGet(LS_SIZE) : 'm';
+    document.body.classList.remove('mp-size-s', 'mp-size-m', 'mp-size-l');
+    document.body.classList.add('mp-size-' + sz);
     kickResize();
   }
   function kickResize() {
@@ -542,6 +557,11 @@
     leave() { leaveRoom(false); window.MP.close(); },
     toggleHidden() { lsSet(LS_HIDE, lsGet(LS_HIDE) === '1' ? null : '1'); applyHidden(); },
     togglePanelOpen() { document.body.classList.toggle('mp-open'); },
+    cycleSize() {
+      const cur = SIZES.includes(lsGet(LS_SIZE)) ? lsGet(LS_SIZE) : 'm';
+      lsSet(LS_SIZE, SIZES[(SIZES.indexOf(cur) + 1) % SIZES.length]);
+      applySize();
+    },
     get room() { return room; },
     get buddy() { return buddy; },
     get transport() { return transport && transport.kind; },
@@ -549,6 +569,7 @@
 
   // ---------- boot ----------
   function boot() {
+    applySize();
     const btn = $('mp-btn');
     if (btn) btn.onclick = () => window.MP.open();
     const saved = normCode(lsGet(LS_ROOM));
