@@ -87,8 +87,9 @@ function simulate(prof, seed, upgrades, hours) {
   let bs = binderStats([], st);
   const pityE = n => (1 - Math.pow(1 - BAL.KEK_RNG_CHANCE, n)) / BAL.KEK_RNG_CHANCE;   // expected clicks per natural Kek drop
   const cost = u => Math.floor(u.baseCost * Math.pow(u.scale, st.owned[u.id]) * (1 - bs.costReduce));
-  // Additive like the game (allAuraMult + binder addMult + field); --sigma-mult models Sigma multiplying the card bonus instead.
-  const totMult = () => argv.includes('--sigma-mult') ? st.mult * (1 + bs.addMult + st.field) : st.mult + bs.addMult + st.field;
+  // Like the game: Sigma's global mult multiplies the card bonus (allAuraMult × (1 + binder addMult + field)).
+  // --sigma-add models the old additive formula for comparison.
+  const totMult = () => argv.includes('--sigma-add') ? st.mult + bs.addMult + st.field : st.mult * (1 + bs.addMult + st.field);
   const apsEff = () => st.aps * (1 + bs.apsPct);
   const apcRaw = () => st.apc + bs.flatApc + st.apc * bs.apcPct;
   const apcEff = () => apcRaw() * bs.critMult;

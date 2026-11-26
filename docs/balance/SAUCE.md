@@ -16,7 +16,7 @@ It is a model, not the game: burns pay their rarity's average Mid payout when pu
 node tools/progress-sim.js                    # full report for game.js
 node tools/progress-sim.js --brief            # one block per profile
 node tools/progress-sim.js --upgrades f.json  # try other numbers without editing game.js
-node tools/progress-sim.js --sigma-mult       # what-if for decision S1 below
+node tools/progress-sim.js --sigma-add        # compare with the old additive Sigma (before decision S1)
 ```
 
 ## The change
@@ -80,3 +80,17 @@ The upgrade descriptions in game.js and cards.csv were updated to match.
 (b) is a small code change (the six places in game.js that add up the multiplier) and the card text would be literally true. Not done here; say the word.
 
 Also worth noting, not changed: the **Level 67 Gyatt** event (100× clicks for 15 s, roughly once every 11 min) and **frenzy** stack to 1,000× clicks when they overlap. Gyatt was ~31% of an active player's Aura before this change and ~15% after.
+
+## Decision S1: Sigma multiplies card bonuses (chosen by Curtis, 2026-11-26)
+
+The total multiplier was `allAuraMult + binder addMult + field`, so every Sigma copy shrank card "+X%" bonuses (a +70% Field was worth about +11% late game). It is now `allAuraMult × (1 + binder addMult + field)` everywhere it is used (`doClick`, the `gameLoop` income ticks, `computeEAS`, `computeBaseEAS`, AUTO_COLLECT clicks). Card bonuses keep their stated value all game. `tools/card-sim.js`, `tools/progress-sim.js` and `tools/smoke-test.mjs` mirror the new formula.
+
+Unlock times don't change. Income is higher once cards and Sigma stack (median of 5 runs, `node tools/progress-sim.js --brief`):
+
+| Profile | 1 h | 3 h | 6 h |
+|---|---|---|---|
+| Casual | 2.71K/s | 48.8K/s | 133K/s |
+| Active | 17.6K/s | 136K/s | 245K/s (was 113K additive) |
+| Frenzy | 269K/s | 910K/s | 1.27M/s |
+
+Burn payouts are measured in seconds of income (EAS), so they scale with it and every card stays inside its budget. `node tools/smoke-test.mjs`: 126/126.

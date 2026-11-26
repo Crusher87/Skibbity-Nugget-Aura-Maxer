@@ -1335,7 +1335,7 @@ function doClick(cx, cy) {
     spawnParticle(cx, cy - 50, '👊 x2');
   }
   clickMult = Math.min(BAL.CLICK_TOTAL_CAP, clickMult);
-  const clickBase = (G.auraPerClick + bs.addApc) * (G.allAuraMult + bs.addMult + fieldMult);
+  const clickBase = (G.auraPerClick + bs.addApc) * G.allAuraMult * (1 + bs.addMult + fieldMult);
   let earned = clickBase * clickMult;
   if (G.frenzyActive) earned *= 10;
   G.aura += earned;
@@ -1591,7 +1591,7 @@ function updateUI() {
   const bs = getBinderStats();
   const fieldMult = getFieldMult();
   const apsMult = apsBuffMult();
-  const effectiveMult = (G.allAuraMult + bs.addMult + fieldMult) * (G.frenzyActive ? 10 : 1);
+  const effectiveMult = G.allAuraMult * (1 + bs.addMult + fieldMult) * (G.frenzyActive ? 10 : 1);
   const effectiveApc = G.auraPerClick + bs.addApc;
   const effectiveAps = (G.auraPerSecond + bs.addAps) * apsMult;
   $auraAmt.textContent = fmt(G.aura);
@@ -1669,7 +1669,7 @@ function gameLoop() {
   const bs = getBinderStats();
   const fieldMult = getFieldMult();
   const apsMult = apsBuffMult();
-  const effectiveMult = (G.allAuraMult + bs.addMult + fieldMult) * (G.frenzyActive ? 10 : 1);
+  const effectiveMult = G.allAuraMult * (1 + bs.addMult + fieldMult) * (G.frenzyActive ? 10 : 1);
   const effectiveAps = (G.auraPerSecond + bs.addAps) * apsMult;
   G.aura += effectiveAps * effectiveMult * dt;
   // Expanding Brain: only minutes played with it slotted count (hidden tabs are skipped above)
@@ -1857,7 +1857,7 @@ function computeEAS() {
   const bs = getBinderStats();
   const fieldMult = getFieldMult();
   const aps = (G.auraPerSecond + bs.addAps) * apsBuffMult();
-  const mult = (G.allAuraMult + bs.addMult + fieldMult);
+  const mult = G.allAuraMult * (1 + bs.addMult + fieldMult);
   return Math.max(1, aps * mult);   // floor at 1 so early game still pays out
 }
 
@@ -1867,7 +1867,7 @@ function computeBaseEAS() {
   const bs = getBinderStats();
   const fieldMult = getFieldMult();
   const aps = (G.auraPerSecond + bs.addAps);   // no temp APS buffs
-  const mult = (G.allAuraMult + bs.addMult + fieldMult);
+  const mult = G.allAuraMult * (1 + bs.addMult + fieldMult);
   return Math.max(1, aps * mult);
 }
 
@@ -2316,7 +2316,7 @@ const EFFECT_HANDLERS = {
       setTimeout(() => {
         const bs = getBinderStats();
         const fieldMult = getFieldMult();
-        const earned = (G.auraPerClick + bs.addApc) * (G.allAuraMult + bs.addMult + fieldMult) * (p.mult || 1);
+        const earned = (G.auraPerClick + bs.addApc) * G.allAuraMult * (1 + bs.addMult + fieldMult) * (p.mult || 1);
         G.aura += earned;
         const e = Math.min(p.easPerClick || 0, (p.capEAS || 0) - paid);
         if (e > 0) { paid += e; G.aura += e * computeBaseEAS(); }

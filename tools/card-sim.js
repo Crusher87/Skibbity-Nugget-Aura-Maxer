@@ -154,22 +154,22 @@ function getFieldMult(G) {
 function computeEAS(G) {
   const bs = getBinderStats(G);
   const aps = (G.auraPerSecond + bs.addAps) * G.apsMultValue;
-  return Math.max(1, aps * (G.allAuraMult + bs.addMult + getFieldMult(G)));
+  return Math.max(1, aps * G.allAuraMult * (1 + bs.addMult + getFieldMult(G)));
 }
 // Mirrors computeBaseEAS() — no temporary APS mult. Every one-shot payout reads this (B1.3).
 function computeBaseEAS(G) {
   const bs = getBinderStats(G);
-  return Math.max(1, (G.auraPerSecond + bs.addAps) * (G.allAuraMult + bs.addMult + getFieldMult(G)));
+  return Math.max(1, (G.auraPerSecond + bs.addAps) * G.allAuraMult * (1 + bs.addMult + getFieldMult(G)));
 }
 // Mirrors the `earned` line in doClick() with clickMult = 1, no crit, no frenzy.
 function clickValue(G) {
   const bs = getBinderStats(G);
-  return (G.auraPerClick + bs.addApc) * (G.allAuraMult + bs.addMult + getFieldMult(G));
+  return (G.auraPerClick + bs.addApc) * G.allAuraMult * (1 + bs.addMult + getFieldMult(G));
 }
 // Mirrors the passive tick in gameLoop(): Aura/sec from APS (no frenzy).
 function apsIncome(G) {
   const bs = getBinderStats(G);
-  return (G.auraPerSecond + bs.addAps) * G.apsMultValue * (G.allAuraMult + bs.addMult + getFieldMult(G));
+  return (G.auraPerSecond + bs.addAps) * G.apsMultValue * G.allAuraMult * (1 + bs.addMult + getFieldMult(G));
 }
 
 // ---------- 4. Kek Koin mirrors ----------
@@ -455,7 +455,7 @@ table(['Card', 'id', 'R', 'Archetype', 'Early APS/APC/Total', 'Mid APS/APC/Total
 
 // (d) field
 P('## (d) Field cards');
-P('Field mult is additive with the SAUCE global mult (getFieldMult + allAuraMult), so its relative value shrinks once Sigma Glaze is bought.');
+P('Field and Binder % bonuses multiply the SAUCE global mult (allAuraMult × (1 + addMult + field)), so they keep their stated value after Sigma Glaze.');
 P('');
 // tickKekCoins(): resting nugget coins auto-collect after KEK_IDLE_TIMEOUT_S, except under Sigma Slam.
 const KEK_IDLE_S = Number((/const KEK_IDLE_TIMEOUT_S\s*=\s*([0-9.]+)/.exec(SRC) || [])[1]) || 20;
