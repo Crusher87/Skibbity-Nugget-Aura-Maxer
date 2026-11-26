@@ -98,7 +98,7 @@
   }
 
   function firebaseTransport() {
-    let db = null, pid = null, roomRef = null, meRef = null, evQuery = null, playersRef = null;
+    let db = null, pid = null, roomRef = null, meRef = null, evQuery = null, playersRef = null, connRef = null, lastPublish = null;
     let serverOffset = 0;
     return {
       kind: 'firebase',
@@ -121,10 +121,24 @@
         db.ref('.info/serverTimeOffset').on('value', s => { serverOffset = s.val() || 0; });
         return pid;
       },
-      async join(code, onPlayers, onEvent) {
+      async join(code, onPlayers, onEvent, first) {
         roomRef = db.ref('rooms/' + code);
         meRef = roomRef.child('players/' + pid);
+        // Write our entry first: the rules validate the whole entry (name + emoji), so an
+        // onDisconnect update on an entry that doesn't exist yet would be refused.
+        await meRef.set({ ...first, online: true, t: firebase.database.ServerValue.TIMESTAMP });
         await meRef.onDisconnect().update({ online: false });
+        // onDisconnect fires once; register it again after every reconnect.
+        connRef = db.ref('.info/connected');
+        let wasConnected = true;
+        connRef.on('value', s => {
+          const c = !!s.val();
+          if (c && !wasConnected && meRef) {
+            meRef.onDisconnect().update({ online: false }).catch(() => { });
+            lastPublish && meRef.set({ ...lastPublish, online: true, t: firebase.database.ServerValue.TIMESTAMP }).catch(() => { });
+          }
+          wasConnected = c;
+        });
         playersRef = roomRef.child('players');
         playersRef.on('value', snap => {
           const all = snap.val() || {};
@@ -151,6 +165,7 @@
       },
       publish(payload) {
         if (!meRef) return;
+        lastPublish = payload;
         meRef.set({ ...payload, online: true, t: firebase.database.ServerValue.TIMESTAMP }).catch(e => console.warn('MP publish failed', e));
       },
       send(event) {
@@ -159,9 +174,10 @@
       },
       leave() {
         if (playersRef) playersRef.off();
+        if (connRef) connRef.off();
         if (evQuery) evQuery.off();
         if (meRef) { meRef.onDisconnect().cancel(); meRef.remove().catch(() => { }); }
-        roomRef = meRef = evQuery = playersRef = null;
+        roomRef = meRef = evQuery = playersRef = connRef = null;
       },
     };
   }
@@ -211,7 +227,7 @@
       if (room) leaveRoom(true);
       transport = (forceLocal || !hasFirebase) ? localTransport() : firebaseTransport();
       myPid = await transport.connect();
-      await transport.join(code, onPlayers, onEvent);
+      await transport.join(code, onPlayers, onEvent, snapshot());
       room = code;
       lsSet(LS_ROOM, code);
       buddyPid = null; buddy = null; buddyClicksPrev = null; feed.length = 0;
