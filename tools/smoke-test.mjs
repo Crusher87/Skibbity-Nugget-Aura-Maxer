@@ -67,7 +67,7 @@ async function startServer() {
   const proc = spawn('python3', ['-m', 'http.server', String(port), '--bind', '127.0.0.1'], { cwd: ROOT, stdio: 'ignore' });
   const base = `http://127.0.0.1:${port}`;
   for (let i = 0; i < 50; i++) {
-    try { const r = await fetch(base + '/index.html'); if (r.ok) return { proc, base }; } catch (_) { }
+    try { const r = await fetch(base + '/index.html'); await r.arrayBuffer(); if (r.ok) return { proc, base }; } catch (_) { }
     await new Promise(r => setTimeout(r, 100));
   }
   proc.kill();
