@@ -2681,6 +2681,12 @@
     }
 
     /* ── Touch screens: finger-sized hit areas for the small buttons ── */
+    /* Touch tablets: the burn cards only peeked ~60px above the bottom edge, which a browser
+       toolbar or home bar can cover completely. Lift them so most of each card shows. */
+    @media (pointer: coarse) and (min-width: 768px), (pointer: coarse) and (orientation: landscape) and (min-height: 501px) {
+      #burn-bar { bottom: calc(-14px + env(safe-area-inset-bottom, 0px)); }
+    }
+
     @media (pointer: coarse) {
       .panel-toggle {
         min-width: 36px;
