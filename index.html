@@ -33,6 +33,11 @@
       --left-w: clamp(220px, 14vw, 380px);
     }
 
+    html {
+      touch-action: manipulation;
+      overscroll-behavior: none;
+    }
+
     body {
       font-family: 'Comic Neue', 'Comic Sans MS', cursive;
       background: var(--dark);
@@ -41,6 +46,13 @@
       height: 100vh;
       width: 100vw;
       user-select: none;
+      -webkit-user-select: none;
+      /* Touch screens: no double-tap zoom when tapping fast (also drops the tap delay),
+         no grey tap flash, no pull-to-refresh, no long-press "save image" menu */
+      touch-action: manipulation;
+      -webkit-tap-highlight-color: transparent;
+      -webkit-touch-callout: none;
+      overscroll-behavior: none;
       /* One filter built from per-source variables (Field theme, GigaChad, burn effects),
          so no source overwrites another. Unset variables add nothing; all unset = no filter. */
       filter: var(--f-theme,) var(--f-giga,) var(--f-retro,) var(--f-blur,) var(--f-scramble,);
@@ -2662,11 +2674,30 @@
       background: rgba(220, 30, 30, 0.5);
     }
 
+    /* Once the Active Binder panel shows, the Rizz meter moves out from under it */
+    body.binder-shown #frenzy-meter-wrap {
+      left: calc(var(--side-pad) + var(--left-w) + 10px);
+    }
+
+    /* ── Touch screens: finger-sized hit areas for the small buttons ── */
+    @media (pointer: coarse) {
+      .panel-toggle {
+        min-width: 36px;
+        min-height: 32px;
+      }
+
+      .shop-tab,
+      #save-btn,
+      #new-game-btn {
+        min-height: 40px;
+      }
+    }
+
     /* ── Portrait mobile ── */
     @media (max-width:767px) and (orientation:portrait) {
       :root {
         --side-pad: 8px;
-        --nugget-sz: min(42vw, 30vh);
+        --nugget-sz: min(42vw, 30vh, calc(56vh - 180px));
       }
 
       #shop-panel {
@@ -2707,11 +2738,13 @@
       }
 
       #nugget-container {
-        top: 30vh;
+        /* centred between the binder row (ends ~170px) and the shop (starts at 56vh) */
+        top: calc((170px + 56vh) / 2);
       }
 
       #kek-coin-overlay {
-        top: 30vh;
+        /* centred between the binder row (ends ~170px) and the shop (starts at 56vh) */
+        top: calc((170px + 56vh) / 2);
       }
 
       #aura-display {
@@ -2730,9 +2763,10 @@
         font-size: 0.6rem;
       }
 
-      #frenzy-meter-wrap {
+      #frenzy-meter-wrap,
+      body.binder-shown #frenzy-meter-wrap {
         left: var(--side-pad);
-        top: 50%;
+        top: calc((170px + 56vh) / 2);   /* level with the nugget, clear of the shop */
         transform: translateY(-50%);
       }
 
@@ -2749,8 +2783,92 @@
         display: none;
       }
 
+      /* Active binder becomes one row of small tiles under the Aura counter, so it no longer
+         covers the nugget and the Rizz meter, and slot 5 isn't hidden behind the shop */
       #binder-slots {
-        width: clamp(140px, 38vw, 220px);
+        top: calc(clamp(1.4rem, 6vw, 2rem) + clamp(1.2rem, 5vw, 1.8rem) + 34px);
+        left: var(--side-pad);
+        right: var(--side-pad);
+        width: auto;
+        padding: 4px;
+      }
+
+      #binder-slots .panel-header {
+        display: none;
+      }
+
+      #binder-slots-content {
+        flex-direction: row;
+        gap: 4px;
+      }
+
+      .binder-slot {
+        position: relative;
+        flex: 1 1 0;
+        min-width: 0;
+        min-height: 48px;
+        padding: 3px;
+        justify-content: center;
+      }
+
+      .binder-slot .slot-card-info,
+      .binder-slot.occupied .slot-label,
+      .binder-slot:not(.occupied) .slot-thumb,
+      .binder-slot:not(.occupied) .slot-unequip {
+        display: none;
+      }
+
+      .binder-slot .slot-label {
+        min-width: 0;
+        text-align: center;
+      }
+
+      .binder-slot .slot-thumb {
+        flex: 0 0 auto;
+      }
+
+      .slot-art-img,
+      .slot-art-emoji {
+        width: 40px;
+        height: 40px;
+      }
+
+      .slot-art-emoji {
+        font-size: 1.5rem;
+      }
+
+      .slot-unequip {
+        position: absolute;
+        top: -6px;
+        right: -6px;
+        width: 22px;
+        height: 22px;
+        padding: 0;
+        border-radius: 50%;
+        background: rgba(60, 10, 10, 0.9);
+        font-size: 0.7rem;
+      }
+
+      /* Keep Save / New Game above the fanned burn cards */
+      body.has-burns #shop-panel {
+        padding-bottom: 64px;
+      }
+
+      /* Two cards per row in My Memes instead of one huge card */
+      #binder-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px;
+        padding: 4px;
+      }
+
+      /* ...which leaves room for the rules text only, so the flavor line goes */
+      .binder-card .cf-desc {
+        font-size: 0.52rem;
+      }
+
+      .binder-card .cf-flavor,
+      .binder-card .cf-flavor-sep {
+        display: none;
       }
 
       #binder-overlay {
@@ -2799,6 +2917,26 @@
       .binder-slot {
         min-height: 36px;
         padding: 3px 6px;
+      }
+
+      /* Short screen: slim binder rows (art + name) and no feed, so nothing stacks on top */
+      .slot-art-img,
+      .slot-art-emoji {
+        width: 30px;
+        height: 30px;
+        font-size: 1.1rem;
+      }
+
+      .slot-card-name {
+        font-size: 0.85rem;
+      }
+
+      .slot-card-fx {
+        display: none;
+      }
+
+      body.binder-shown #left-bottom-panel {
+        display: none;
       }
     }
   </style>
